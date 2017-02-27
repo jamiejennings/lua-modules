@@ -2,22 +2,23 @@
 ----
 ---- test functions for recordtype.lua
 ----
----- (c) 2009, 2015 Jamie A. Jennings
----- Saturday, May 30, 2009
----- Monday, September 28, 2015
+---- (c) 2009, 2015, 2017 Jamie A. Jennings
 
 recordtype = require("recordtype")
 
 assert (type(recordtype)=="table")
 
-window = recordtype.define({width=100, height=400, color="red"}, "window")
+window = recordtype.new("window", {width=100, height=400, color="red"})
 assert (type(window) == "table")
-assert (window.type() == "window")
+assert (window.type() == "recordtype")
+assert (window:type() == "recordtype")
 
-w1 = window()
+w1 = window.new()
 
 assert (window.is(w1))
 assert (recordtype.type(w1) == "window")
+assert (tostring(w1):sub(1,10)=="<window 0x")
+assert (tostring(w1):sub(-1)==">")
 
 assert (w1.width == 100)
 assert (w1.height == 400)
@@ -25,6 +26,22 @@ assert (w1.color == "red")
 
 w1.color="blue"
 assert (w1.color == "blue")
+
+w1.width = nil
+assert (w1.width==nil)
+w1.width = 99
+assert (w1.width==99)
+
+ok, msg = pcall(function() print(w1.foo); end)
+assert (not ok)
+assert (msg:find("Invalid key"))
+
+ok, msg = pcall(function() w1.foo=123; end)
+assert (not ok)
+assert (msg:find("Invalid key"))
+
+
+--[==[
 
 window.create_function = function(cw, c) local w=cw(); w.color=c; return w; end
 
@@ -142,5 +159,8 @@ assert (window() ~= window())
 -- slot names must be strings
 st, err = pcall(recordtype.define, {100, 400, "red"}, "window")
 assert (not st)			-- expected to fail
+
+--]==]
+
 
 print("End of tests")

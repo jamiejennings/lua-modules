@@ -53,19 +53,42 @@ recordtype.ABOUT=
     lua_version= "5.3"
 }
 
+local recordtype_mark = {}			    -- marks all objects created here
 local UID = 0
-local NAME = -1
+local TYPENAME = -1
+local MARK = -2
+
+local function make_setter(proto)
+   return function(self, key, value)
+	     if rawget(proto, key) then
+		rawset(self, key, value)
+	     else
+		error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
+	     end
+	  end
+end
 
 local function no_new_keys(self, key, value)
-   error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[NAME])
+   error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
+end
+
+local function make_getter(proto)
+   return function(self, key)
+	     if rawget(proto, key) then return nil; end
+	     error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
+	  end
 end
 
 local function invalid_key(self, key)
-   error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[NAME])
+   error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
 end
 
 local function record_tostring(self)
-   return "<" .. self[NAME] .. " " .. self[UID] .. ">"
+   if self[TYPENAME] then
+      return "<" .. self[TYPENAME] .. " " .. self[UID] .. ">"
+   else
+      return "<recordtype>"
+   end
 end
 
 -- Return true if obj is a recordtype type (not a recordtype)
@@ -80,54 +103,79 @@ local function make_new_record_function(rtype)
 	     local proto = rtype.prototype
 	     local new = {}
 	     for k,v in pairs(template) do
-		if proto[k] then new[k] = v; else invalid_key(rtype, k); end
+		if not proto[k] then invalid_key(rtype, k); end
+		if v~=recordtype.NIL then new[k] = v; end
 	     end
 	     for k,v in pairs(proto) do
-		if not new[k] then new[k] = v; end
-	     end
+		if (not new[k]) and rawget(template, k)~=recordtype.NIL then
+		   new[k] = v
+		end
+	     end -- for
 	     new[UID] = tostring(new):match("(0x.*)") or "id/error"
-	     new[NAME] = rtype.name
-	     return setmetatable(new, rtype.metatable)
+	     new[TYPENAME] = rtype.instance_type
+	     new[MARK] = recordtype_mark
+	     return setmetatable(new, rtype.instance_metatable)
 	  end
 end
 
-local recordtype_metatable = {
-   __tostring = record_tostring;
-   __index = invalid_key;
-   __newindex = no_new_keys;
-}
+local recordtype_metatable = { __newindex = read_only_table_error;
+			       __index = {};
+			       __tostring = record_tostring; }
 
-recordtype.unspecified =
-   setmetatable({}, {__tostring = function (self) return("<unspecified>"); end; })
+local function read_only_table_error(...) error("read-only table", 2); end
+
+-- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
+-- provide a stand-in value for users to put in prototype tables.  We automatically convert the
+-- value to an actual stored nil.
+recordtype.NIL =
+   setmetatable({}, {__tostring = function (self) return("<recordtype nil>"); end; })
 
 -- Define a new type of record
-function recordtype.new(name, prototype, tostring_function)
-   if type(name)~="string" then error("recordtype name not a string: " .. tostring(name)); end
-   if type(prototype)~="table" then error("recordtype prototype not a table: " .. tostring(prototype)); end
+function recordtype.new(typename, prototype, tostring_function, init_function)
+   return new_recordtype_init(typename, prototype, tostring_function)
+end
+
+function new_recordtype_init(typename, prototype, tostring_function)
+   if type(typename)~="string" then
+      error("recordtype: typename not a string: " .. tostring(typename), 2)
+   end
+   if type(prototype)~="table" then
+      error("recordtype: prototype not a table: " .. tostring(prototype), 2)
+   end
    for k,v in pairs(prototype) do
-      if type(k)~="string" then error("recordtype key not a string: " .. tostring(k)); end
+      if type(k)~="string" then error("recordtype: key not a string: " .. tostring(k), 2); end
    end
    -- prevent adding new keys after definition, i.e. after we return the new recordtype object
    setmetatable(prototype,
-		{__newindex = function(...) error("cannot add new record keys to prototype"); end})
-   local record_metatable = { __newindex = no_new_keys;
-			      __index = invalid_key;
-			      __tostring = tostring_function or record_tostring;
-			   }
-   local rectype = {name = name;
+		{__newindex = function(...) error("cannot add new record keys to prototype", 2); end})
+   local record_metatable = { __newindex = read_only_table_error;
+			      __tostring = record_tostring; }
+   local rectype = {type = function(...) return "recordtype"; end;
+		    instance_type = typename;
 		    prototype = prototype;
 		    tostring = tostring_function or false;
-		    is = make_is_instance_function(record_metatable);
-		    metatable = record_metatable;
-		 }
+		    instance_metatable = { __newindex = make_setter(prototype);
+					   __index = make_getter(prototype);
+					   __tostring = tostring_function or record_tostring; } }
+   rectype.is = make_is_instance_function(rectype.instance_metatable);
    rectype.new = make_new_record_function(rectype)
    rectype[UID] = tostring(rectype):match("(0x.*)") or "id/error"
-   rectype[NAME] = "recordtype " .. name
-   return setmetatable(rectype, recordtype_metatable)
+   rectype[TYPENAME] = "recordtype " .. typename;
+   rectype[MARK] = recordtype_mark
+   record_metatable.__index = rectype
+   -- return a read-only version of the table, in order to prevent accidental changes
+   return setmetatable({}, record_metatable)
 end
 
+function recordtype.type(obj)
+   if type(obj)=="table" and obj[MARK]==recordtype_mark then
+      return obj[TYPENAME]
+   else
+      error("recordtype: argument not a recordtype object: " .. tostring(obj), 2)
+   end
+end
+		     
 recordtype.is = make_is_instance_function(recordtype_metatable)
-
 
 return recordtype
 
@@ -276,6 +324,8 @@ Details:
 -- To do:
 
 -- Turn recordtype.new into a prototype-based function that calls make_new_record_function.
+
+-- Add a method called 'pairs' that returns an iterator over the keys.
 
 -- Keep a list of defined type names, and print a warning when redefining an
 -- existing type name.
