@@ -80,7 +80,7 @@ local function make_getter(proto)
 end
 
 local function invalid_key(self, key)
-   error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
+
 end
 
 local function record_tostring(self)
@@ -97,13 +97,14 @@ local function make_is_instance_function(metatable)
    return function(obj) return (getmetatable(obj)==metatable); end
 end
 
-local function make_new_record_function(rtype)
+local function make_new_record_function(typename, proto, mt)
    return function(template)
 	     template = template or {}
-	     local proto = rtype.prototype
 	     local new = {}
 	     for k,v in pairs(template) do
-		if not proto[k] then invalid_key(rtype, k); end
+		if not proto[k] then
+		   error("Invalid key '" .. tostring(key) .. "' for recordtype " .. typename, 2)
+		end
 		if v~=recordtype.NIL then new[k] = v; end
 	     end
 	     for k,v in pairs(proto) do
@@ -112,9 +113,9 @@ local function make_new_record_function(rtype)
 		end
 	     end -- for
 	     new[UID] = tostring(new):match("(0x.*)") or "id/error"
-	     new[TYPENAME] = rtype.instance_type
+	     new[TYPENAME] = typename
 	     new[MARK] = recordtype_mark
-	     return setmetatable(new, rtype.instance_metatable)
+	     return setmetatable(new, mt)
 	  end
 end
 
@@ -135,6 +136,21 @@ function recordtype.new(typename, prototype, tostring_function, init_function)
    return new_recordtype_init(typename, prototype, tostring_function)
 end
 
+local function make_field_next_function(prototype)
+   return function(self, optional_key)
+	     local key = next(prototype, optional_key)
+	     if key~=nil then return key, self[key]
+	     else return nil; end
+	  end
+end
+
+local function make_field_pairs_function(prototype)
+   local next_function = make_field_next_function(prototype)
+   return function(self)
+	     return next_function, self, nil
+	  end
+end
+
 function new_recordtype_init(typename, prototype, tostring_function)
    if type(typename)~="string" then
       error("recordtype: typename not a string: " .. tostring(typename), 2)
@@ -150,15 +166,18 @@ function new_recordtype_init(typename, prototype, tostring_function)
 		{__newindex = function(...) error("cannot add new record keys to prototype", 2); end})
    local record_metatable = { __newindex = read_only_table_error;
 			      __tostring = record_tostring; }
+   local instance_metatable = { __newindex = make_setter(prototype);
+				__index = make_getter(prototype);
+				__tostring = tostring_function or record_tostring; }
    local rectype = {type = function(...) return "recordtype"; end;
+		    next_field = make_field_next_function(prototype);
+		    fields = make_field_pairs_function(prototype);
 		    instance_type = typename;
-		    prototype = prototype;
+		    --prototype = prototype;
 		    tostring = tostring_function or false;
-		    instance_metatable = { __newindex = make_setter(prototype);
-					   __index = make_getter(prototype);
-					   __tostring = tostring_function or record_tostring; } }
+		    instance_metatable = instance_metatable; }
    rectype.is = make_is_instance_function(rectype.instance_metatable);
-   rectype.new = make_new_record_function(rectype)
+   rectype.new = make_new_record_function(typename, prototype, instance_metatable)
    rectype[UID] = tostring(rectype):match("(0x.*)") or "id/error"
    rectype[TYPENAME] = "recordtype " .. typename;
    rectype[MARK] = recordtype_mark

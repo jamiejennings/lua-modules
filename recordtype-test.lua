@@ -40,6 +40,30 @@ ok, msg = pcall(function() w1.foo=123; end)
 assert (not ok)
 assert (msg:find("Invalid key"))
 
+function validate_w1(k, v)
+   if k=="color" then assert(v=="blue"); return true
+   elseif k=="width" then assert(v==99); return true
+   elseif k=="height" then assert(v==400); return true
+   elseif k==nil then return false
+   else error("Field error!")
+   end
+end
+
+count = 0
+index = nil
+repeat
+   index, value = window.next_field(w1, index)
+   if validate_w1(index, value) then count = count + 1; end
+until index==nil
+
+-- 3 calls return values, and validate_w1 returns true for those
+assert (count == 3)
+
+count = 0
+for k,v in window.fields(w1) do
+   if validate_w1(k,v) then count = count + 1; end
+end
+assert (count == 3)
 
 --[==[
 
