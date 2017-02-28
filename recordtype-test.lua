@@ -12,6 +12,8 @@ window = recordtype.new("window", {width=100, height=400, color="red"})
 assert (type(window) == "table")
 assert (window.type() == "recordtype")
 assert (window:type() == "recordtype")
+--TODO: enable this test
+--assert (recordtype.is(window))          
 
 w1 = window.new()
 
@@ -39,6 +41,18 @@ assert (msg:find("Invalid key"))
 ok, msg = pcall(function() w1.foo=123; end)
 assert (not ok)
 assert (msg:find("Invalid key"))
+
+ok, msg = pcall(window.id)			    -- no argument ==> error
+assert (not ok)
+ok, msg = pcall(window.id, {})			    -- argument not window instance ==> error
+assert (not ok)
+ok, msg = pcall(recordtype.id, w1)		    -- argument not recordtype instance ==> error
+--assert (not ok)
+
+assert (tonumber(recordtype.id(window)))
+assert (tonumber(window.id(w1)))
+--TODO: enable this test
+--assert (recordtype.id(window) ~= window.id(w1))
 
 function validate_w1(k, v)
    if k=="color" then assert(v=="blue"); return true
