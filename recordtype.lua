@@ -36,14 +36,12 @@ local getmetatable= assert( getmetatable )
 local setmetatable= assert( setmetatable )
 local rawget= assert( rawget )
 local rawset= assert( rawset )
-local tostring = assert( tostring )
+local lua_tostring = assert( tostring )
 local print = assert( print )
-local luatype = assert( type )
+local lua_type = assert( type )
 local pcall = assert( pcall )
 
-local recordtype = {}
-
-recordtype.ABOUT= 
+local ABOUT= 
 {
     author= "Jamie A. Jennings",
     description= "Provides records implemented as tables with a fixed set of keys",
@@ -54,41 +52,171 @@ recordtype.ABOUT=
 }
 
 local recordtype_mark = {}			    -- marks all objects created here
+
+-- TODO: trash these numeric indices
 local TYPENAME = -1
 local MARK = -2
 
+local function err(str)
+   error("recordtype: " .. str, 2)
+end
+
+-- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
+-- provide a stand-in value for users to put in prototype tables.  We automatically convert the
+-- value to an actual stored nil.
+local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype nil>"); end; })
+
+local function read_only_table_error(...) error("read-only table", 2); end
+
 local function make_setter(proto)
    return function(self, key, value)
-	     if rawget(proto, key) then
-		rawset(self, key, value)
-	     else
-		error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
-	     end
+	     if rawget(proto, key) then rawset(self, key, value)
+	     else err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self[TYPENAME])); end
 	  end
 end
 
 local function make_getter(proto)
    return function(self, key)
 	     if rawget(proto, key) then return nil; end
-	     error("Invalid key '" .. tostring(key) .. "' for recordtype type " .. self[TYPENAME], 2)
+	     err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self[TYPENAME]))
 	  end
 end
 
-local function record_tostring(self)
-   if self[TYPENAME] then
-      return "<" .. self[TYPENAME] .. " " .. recordtype.id() .. ">"
-   else
-      return "<recordtype>"
+local function recordtype_tostring(self)
+   return "<" .. self.type() .. " " .. self.id() .. ">"
+end
+
+local function make_recordtype_id_function(kind)
+   return function(self)
+	     if kind.is(self) then return lua_tostring(self):match("(0x%x*)") or "id/err"
+	     else err("argument not an instance of " .. kind.type()); end
+	  end
+end
+
+local function make_object_creator(typename, proto)
+   for k,v in pairs(proto) do
+      if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
+   -- prevent adding new keys after definition, i.e. after we return the new recordtype object
+   setmetatable(proto, {__newindex = function(...) err("cannot add new record keys to prototype"); end})
+   local metatable = { __newindex = make_setter(proto);
+		       __index = make_getter(proto);
+		       __tostring = recordtype_tostring; }
+   return function(template)
+	     template = template or {}
+	     local new = {}
+	     for k,v in pairs(template) do
+		if not proto[k] then
+		   err("invalid key '" .. tostring(k) .. "' for type " .. typename)
+		end
+		if v~=NIL then new[k] = v; end
+	     end
+	     for k,v in pairs(proto) do
+		if (not new[k]) and rawget(template, k)~=NIL then new[k] = v; end
+	     end
+	     new[TYPENAME] = typename
+	     new[MARK] = recordtype_mark
+	     return setmetatable(new, metatable)
+	  end
+end
+   
+local recordtype_prototype = 
+   { type = function(self) return "recordtype"; end,
+     id = false,
+     new = false,
+     is = false,
+     next_field = true,
+     fields = false,
+     instance_type = false,
+     tostring = false }
+
+local function make_field_next_function(prototype)
+   return function(self, optional_key)
+	     local key = next(prototype, optional_key)
+	     if key~=nil then return key, self[key]
+	     else return nil; end
+	  end
+end
+
+local function make_field_pairs_function(prototype)
+   local next_function = make_field_next_function(prototype)
+   return function(self) return next_function, self, nil; end
 end
 
 local function make_is_instance_function(metatable)
    assert(type(metatable)=="table")
-   return function(obj)
-	     --print("is_instance called with argument " .. tostring(obj) .. "and metatable " .. tostring(metatable));
-	     return (getmetatable(obj)==metatable);
-	  end
+   return function(obj) return (getmetatable(obj)==metatable); end
 end
+
+local uninitialized_recordtype_creator = make_object_creator("recordtype", recordtype_prototype)
+
+-- TODO: implement recordtype.readonly and maybe other wrappers to use when making a prototype?
+-- e.g. {name=recordtype.readonly("anonymous")}
+
+local function recordtype_creator(parent, typename, prototype)
+   print("At the dawn of time...")
+   if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
+   if type(prototype)~="table" then err("prototype not a table: " .. tostring(prototype)); end
+
+   local recordtype = uninitialized_recordtype_creator()
+   recordtype.next_field = make_field_next_function(prototype)
+   recordtype.fields = make_field_pairs_function(prototype)
+   recordtype.instance_type = typename
+   recordtype.is = make_is_instance_function(getmetatable(parent))
+   recordtype.id = make_recordtype_id_function(parent)
+   recordtype.new = function(typename, prototype)
+		       return recordtype_creator(recordtype, typename, prototype)
+		    end
+
+--   local new_instance = make_new_record_function(typename, prototype, instance_metatable)--, recordtype_init_function)
+--   rectype.new = function(template)
+--                    local new = new_instance(template)
+--                    return new
+--                 end
+
+--   rectype[TYPENAME] = "recordtype " .. typename
+--   rectype[MARK] = recordtype_mark
+--   record_metatable.__index = rectype
+--   -- return a read-only version of the table, in order to prevent accidental changes
+--   return setmetatable({}, record_metatable)
+--end
+
+   return recordtype
+end
+
+local function init()
+   local parent = setmetatable({}, {__index = {}})  -- dummy
+   local initial_object = recordtype_creator(parent, "recordtype", recordtype_prototype)
+   initial_object.is = make_is_instance_function(getmetatable(initial_object))
+   initial_object.id = function(...) return "0x0"; end
+   return initial_object
+end
+
+return init()
+   
+--[==[
+
+
+
+function new(typename, prototype) 
+   return recordtype_init_function(typename,
+				   prototype,
+				   recordtype_metatable,
+				   record_tostring)
+end
+
+
+
+
+
+
+
+return recordtype
+
+
+
+
+
 
 local function make_new_record_function(typename, proto, mt, init)
    return function(template)
@@ -116,28 +244,6 @@ local function make_new_record_function(typename, proto, mt, init)
 	  end
 end
 
-local function read_only_table_error(...) error("read-only table", 2); end
-
--- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
--- provide a stand-in value for users to put in prototype tables.  We automatically convert the
--- value to an actual stored nil.
-recordtype.NIL =
-   setmetatable({}, {__tostring = function (self) return("<recordtype nil>"); end; })
-
-local function make_field_next_function(prototype)
-   return function(self, optional_key)
-	     local key = next(prototype, optional_key)
-	     if key~=nil then return key, self[key]
-	     else return nil; end
-	  end
-end
-
-local function make_field_pairs_function(prototype)
-   local next_function = make_field_next_function(prototype)
-   return function(self)
-	     return next_function, self, nil
-	  end
-end
 
 -- Define a new type of record
 --function recordtype.new   (typename, prototype, tostring_function)
@@ -145,54 +251,10 @@ end
 --end
 
 local recordtype_metatable = { __newindex = read_only_table_error;
+			       __index = {};
 			       __tostring = record_tostring; }
 
-function recordtype.new(typename, prototype) 
-   return recordtype_init_function(typename,
-				   prototype,
-				   recordtype_metatable,
-				   record_tostring)
-end
 
-
-function recordtype_init_function(typename, prototype, record_metatable, tostring_function)
-   if type(typename)~="string" then
-      error("recordtype: typename not a string: " .. tostring(typename), 2)
-   end
-   if type(prototype)~="table" then
-      error("recordtype: prototype not a table: " .. tostring(prototype), 2)
-   end
-   for k,v in pairs(prototype) do
-      if type(k)~="string" then error("recordtype: key not a string: " .. tostring(k), 2); end
-   end
-   -- prevent adding new keys after definition, i.e. after we return the new recordtype object
-   setmetatable(prototype,
-		{__newindex = function(...) error("cannot add new record keys to prototype", 2); end})
-   local instance_metatable = { __newindex = make_setter(prototype);
-				__index = make_getter(prototype);
-				__tostring = tostring_function or record_tostring; }
-   local rectype = {type = function(...) return "recordtype"; end;
-		    next_field = make_field_next_function(prototype);
-		    fields = make_field_pairs_function(prototype);
-		    instance_type = typename;
-		    tostring = tostring_function or false;
-		    --instance_metatable = instance_metatable;
-		 }
-   rectype.is = make_is_instance_function(instance_metatable);
-   rectype.new = make_new_record_function(typename, prototype, instance_metatable, recordtype_init_function)
-   rectype.id = function(self)
-		   if rectype.is(self) then
-		      return tostring(self):match("(0x%x*)")
-		   else
-		      error("argument not an instance of " .. typename, 2)
-		   end
-		end
-   rectype[TYPENAME] = "recordtype " .. typename;
-   rectype[MARK] = recordtype_mark
-   record_metatable.__index = rectype
-   -- return a read-only version of the table, in order to prevent accidental changes
-   return setmetatable({}, record_metatable)
-end
 
 local id = tostring(recordtype):match("(0x%x*)") or "id/error"
 recordtype.id = function(self)
@@ -210,28 +272,6 @@ function recordtype.type(obj)
    end
 end
 		     
---local recordtype_metatable = { __newindex = read_only_table_error;
---                               __index = {};
---                               __tostring = record_tostring; }
---
-local recordtype_prototype = { name = "anonymous";
-			       prototype = recordtype.NIL;
-			       tostring = recordtype.NIL;
-			       init = recordtype.NIL; }
-			       
---recordtype.is = make_is_instance_function(recordtype_metatable)
-
-local record_type_obj = recordtype.new("recordtype",
-				       recordtype_prototype,
-				       --function(...) return "<recordtype>"; end,
-				       record_tostring,
-				       make_new_record_function(typename,
-								prototype,
-								recordtype_metatable,
-								recordtype_init_function))
-recordtype.obj = record_type_obj
-
-return recordtype
 
 --[[  OLD DOC:
 
@@ -372,6 +412,8 @@ Details:
   }
 
 ]]--
+
+--]==]
 
 
 ---------------------------------------------------------------------------------------------------
