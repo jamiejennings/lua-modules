@@ -78,6 +78,40 @@ assert (tonumber(recordtype.id(window)))
 assert (tonumber(recordtype.id(w1)))
 assert (recordtype.id(window) ~= recordtype.id(w1))
 
+door = recordtype.new("Door", {color="black", handed="left", lock=recordtype.NIL})
+recordtype_test(door)
+assert (recordtype.typename(door) == "recordtype")
+
+d1 = door.new()
+
+assert (door.is(d1))
+assert (recordtype.typename(d1) == "Door")
+
+assert (not recordtype.is(d1))
+assert (not window.is(d1))
+assert (not door.is(w1))
+
+assert (d1.handed == "left")
+assert (d1.color == "black")
+assert (d1.lock == nil)
+
+d1.color = "red"
+d1.lock = "bolt"
+
+assert (d1.handed == "left")
+assert (d1.color == "red")
+assert (d1.lock == "bolt")
+
+d1.color = nil
+assert (d1.color == nil)
+
+--d2=door({handed="right"})
+--assert (d2.handed == "right")
+
+
+
+
+
 function validate_w1(k, v)
    if k=="color" then assert(v=="blue"); return true
    elseif k=="width" then assert(v==99); return true
@@ -90,15 +124,18 @@ end
 count = 0
 index = nil
 repeat
-   index, value = window.next_field(w1, index)
-   if validate_w1(index, value) then count = count + 1; end
+   index, value = next(w1, index)
+   -- skip the internal implementation slots, which have non-string keys
+   if type(index)=="string" then
+      if validate_w1(index, value) then count = count + 1; end
+   end
 until index==nil
 
 -- 3 calls return values, and validate_w1 returns true for those
 assert (count == 3)
 
 count = 0
-for k,v in window.fields(w1) do
+for k,v in pairs(w1) do
    if validate_w1(k,v) then count = count + 1; end
 end
 assert (count == 3)
@@ -116,23 +153,6 @@ assert (w2.width == nil)
 w2.width = 678
 assert (w2.width == 678)
 
-
-door = recordtype.define({color="black", handed="left"}, "door")
-assert (type(door)=="table")
-
-d1 = door()
-
-assert (door.is(d1))
-assert (door.type() == "door")
-assert (recordtype.type(d1) == "door")
-
-assert (window.is(d1) == false)
-assert (door.is(w1) == false)
-
-assert (d1.handed == "left")
-
-d2=door({handed="right"})
-assert (d2.handed == "right")
 
 door.print = 
    function(self) 
