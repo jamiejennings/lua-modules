@@ -10,15 +10,14 @@ assert (type(recordtype)=="table")
 
 window = recordtype.new("window", {width=100, height=400, color="red"})
 assert (type(window) == "table")
-assert (window.type() == "recordtype")
-assert (window:type() == "recordtype")
---TODO: enable this test
---assert (recordtype.is(window))          
+assert (window.typename() == "recordtype")
+assert (window:typename() == "recordtype")
+assert (recordtype.is(window))          
 
 w1 = window.new()
 
 assert (window.is(w1))
-assert (recordtype.type(w1) == "window")
+assert (recordtype.typename(w1) == "window")
 assert (tostring(w1):sub(1,10)=="<window 0x")
 assert (tostring(w1):sub(-1)==">")
 

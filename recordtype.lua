@@ -52,20 +52,20 @@ local ABOUT=
 }
 
 local function err(str)
-   error("recordtype: " .. str, 2)
+   error("recordtype: " .. str, 3)
 end
 
-local function make_setter(proto)
+local function make_setter(typename, proto)
    return function(self, key, value)
 	     if rawget(proto, key) then rawset(self, key, value)
-	     else err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self.type())); end
+	     else err("invalid key '" .. tostring(key) .. "' for type " .. typename); end
 	  end
 end
 
-local function make_getter(proto)
+local function make_getter(typename, proto)
    return function(self, key)
 	     if rawget(proto, key) then return nil; end
-	     err("invalid key '" .. tostring(key) .. "' for type ") --.. tostring(self.type()))
+	     err("invalid key '" .. tostring(key) .. "' for type " .. typename)
 	  end
 end
 
@@ -82,24 +82,30 @@ local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype n
 
 ---------------------------------------------------------------------------------------------------
 
---TODO:
---local recordtype_mark = {}			    -- marks all objects created here
+-- Need a set of unique values known only to the recordtype implementation.  In Lua, an empty
+-- table is a fresh object that is not = to any other object.
+
+local MARK = {}					    -- marks all objects created here
+local ID = {}					    -- index of object unique id
+local TYPENAME = {}				    -- index of object type name
+local PARENT = {}				    -- index of parent object
+
+---------------------------------------------------------------------------------------------------
 
 local root = {}
 local root_id = lua_tostring(root):match("(0x%x*)")
 local root_typename = "recordtype root"
---local root_mt = {__tostring = function(self) return("<"..root_typename.." "..root_id..">"); end,
---	      }
 
-local function make_instance_metatable(typename, proto, idstring)
-   return { __newindex = make_setter(proto);
-	    __index = make_getter(proto);
-	    __tostring = function(self) return "<" .. typename .. " " .. idstring .. ">"
+-- The tostring function looks up the typename so that we can !@#
+local function make_instance_metatable(typename, proto)
+   return { __newindex = make_setter(typename, proto);
+	    __index = make_getter(typename, proto);
+	    __tostring = function(self) return "<" .. rawget(self,TYPENAME) .. " " .. rawget(self,ID) .. ">"
 			 end
 	 }
 end
 
-local function object_factory(typename, proto)
+local function object_factory(parent, typename, proto)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    for k,v in pairs(proto) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
@@ -119,12 +125,16 @@ local function object_factory(typename, proto)
       for k,v in pairs(proto) do
 	 if (not new[k]) and rawget(template, k)~=NIL then new[k] = v; end
       end
-      return setmetatable(new, metatable), idstring
+      new[MARK] = MARK
+      new[ID] = idstring
+      new[TYPENAME] = typename
+      new[PARENT] = parent
+      return setmetatable(new, metatable)
    end
-   return creator
+   return creator, metatable
 end
 
-local recordtype_prototype = {type = NIL,
+local recordtype_prototype = {typename = NIL,
 			      id = NIL,
 			      new = NIL,
 			      is = NIL,
@@ -134,45 +144,39 @@ local recordtype_prototype = {type = NIL,
 local root_prototype = {}
 for k,v in pairs(recordtype_prototype) do root_prototype[k] = v; end
    
-local root_creator, root_metatable = object_factory("ROOT", root_prototype)
-
-function new_recordtype(factory, typename, prototype, init_function)
+function new_recordtype(parent, typename, prototype, init_function)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    prototype = prototype or {}
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
    setmetatable(prototype, {__newindex = function(...) err("cannot add new keys to prototype"); end})
-   init_function = init_function or function(factory) return factory(); end
-   local rt, rt_id = factory(recordtype_prototype)
-   local mt = getmetatable(rt)
---   local rt_id = lua_tostring(getmetatable(rt)):match("(0x%x*)")
-   rt.type = function(...) return tostring(typename); end
-   rt.id = function(self) return rt_id; end
-   rt.metatable = mt
-   print("mt = " .. tostring(mt))
-   rt.factory = object_factory(typename, prototype)
-   rt.new = function(...) return init_function(rt.factory, ...); end
-   rt.is = make_is_instance_function(mt)
+   init_function = init_function or function(parent) return parent.factory(); end
+   local rt = parent.factory(recordtype_prototype)
+--   local rt_typename = rawget(rt,TYPENAME)
+--   rt.typename = function(...) return rt_typename; end
+   local rt_idstring = rawget(rt,ID)
+   rt.id = function(self) return rt_idstring; end
+   rt.factory, rt.metatable = object_factory(parent, typename, prototype)
+   rt.is = make_is_instance_function(rt.metatable)
+   rt.new = function(...) return init_function(rt, ...); end
    return rt
 end
 
+-- The primordial object has itself as a parent.
+local initial_obj = {}
+initial_obj[PARENT] = initial_obj
+initial_obj.factory, initial_obj.metatable = object_factory(initial_obj, root_typename, root_prototype)
+initial_obj = new_recordtype(initial_obj, "recordtype", root_prototype)
 
-initial_obj = new_recordtype(root_creator, "*recordtype*", root_prototype, function(...) return ...; end)
+-- initial_obj now has all the properties of recordtype, including the typename "recordtype".
+-- but we want to visibly distinguish the initial object for clarity while debugging.
+rawset(initial_obj, TYPENAME, root_typename)
 
 initial_obj.new = function(typename, prototype, init_function)
-		     return new_recordtype(root_creator, typename, prototype, init_function)
+		     return new_recordtype(initial_obj, typename, prototype, init_function)
 		  end
-
-initial_obj.id = function(...) return root_id; end
-initial_obj.type = function(...) return root_typename; end
-print(initial_obj.metatable)
 setmetatable(initial_obj, initial_obj.metatable)
-initial_obj.is = make_is_instance_function(initial_obj.metatable)
-
---local is_self = make_is_instance_function(getmetatable(initial_obj))
---local is_recordtype = make_is_instance_function(initial_obj.metatable)
---initial_obj.is = function(obj) return is_self(obj) or is_recordtype(obj); end
 
 return initial_obj
 
