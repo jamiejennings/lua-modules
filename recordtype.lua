@@ -51,14 +51,28 @@ local ABOUT=
     lua_version= "5.3"
 }
 
-local recordtype_mark = {}			    -- marks all objects created here
-
--- TODO: trash these numeric indices
-local TYPENAME = -1
-local MARK = -2
-
 local function err(str)
    error("recordtype: " .. str, 2)
+end
+
+local function make_setter(proto)
+   return function(self, key, value)
+	     if rawget(proto, key) then rawset(self, key, value)
+	     else err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self.type())); end
+	  end
+end
+
+local function make_getter(proto)
+   return function(self, key)
+	     if rawget(proto, key) then return nil; end
+	     err("invalid key '" .. tostring(key) .. "' for type ") --.. tostring(self.type()))
+	  end
+end
+
+-- obj is an instance of parent iff the metatable of obj is the one  assigned to all children of parent 
+local function make_is_instance_function(metatable)
+   assert(type(metatable)=="table")
+   return function(obj) return (getmetatable(obj)==metatable); end
 end
 
 -- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
@@ -66,21 +80,111 @@ end
 -- value to an actual stored nil.
 local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype nil>"); end; })
 
+---------------------------------------------------------------------------------------------------
+
+--TODO:
+--local recordtype_mark = {}			    -- marks all objects created here
+
+local root = {}
+local root_id = lua_tostring(root):match("(0x%x*)")
+local root_typename = "recordtype root"
+--local root_mt = {__tostring = function(self) return("<"..root_typename.." "..root_id..">"); end,
+--	      }
+
+local function make_instance_metatable(typename, proto, idstring)
+   return { __newindex = make_setter(proto);
+	    __index = make_getter(proto);
+	    __tostring = function(self) return "<" .. typename .. " " .. idstring .. ">"
+			 end
+	 }
+end
+
+local function object_factory(typename, proto)
+   if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
+   for k,v in pairs(proto) do
+      if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
+   end
+   setmetatable(proto, {__newindex = function(...) err("cannot add new keys to prototype"); end})
+   local metatable = make_instance_metatable(typename, proto)
+   local function creator(template)
+      template = template or {}
+      local new = {}
+      local idstring = lua_tostring(new):match("(0x%x*)") or "id/error"
+      for k,v in pairs(template) do
+	 if proto[k]==nil then
+	    err("invalid key '" .. tostring(k) .. "' for type " .. typename)
+	 end
+	 if v~=NIL then new[k] = v; end
+      end
+      for k,v in pairs(proto) do
+	 if (not new[k]) and rawget(template, k)~=NIL then new[k] = v; end
+      end
+      return setmetatable(new, metatable), idstring
+   end
+   return creator
+end
+
+local recordtype_prototype = {type = NIL,
+			      id = NIL,
+			      new = NIL,
+			      is = NIL,
+			      metatable = NIL,
+			      factory = NIL,
+			   }
+local root_prototype = {}
+for k,v in pairs(recordtype_prototype) do root_prototype[k] = v; end
+   
+local root_creator, root_metatable = object_factory("ROOT", root_prototype)
+
+function new_recordtype(factory, typename, prototype, init_function)
+   if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
+   prototype = prototype or {}
+   for k,v in pairs(prototype) do
+      if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
+   end
+   setmetatable(prototype, {__newindex = function(...) err("cannot add new keys to prototype"); end})
+   init_function = init_function or function(factory) return factory(); end
+   local rt, rt_id = factory(recordtype_prototype)
+   local mt = getmetatable(rt)
+--   local rt_id = lua_tostring(getmetatable(rt)):match("(0x%x*)")
+   rt.type = function(...) return tostring(typename); end
+   rt.id = function(self) return rt_id; end
+   rt.metatable = mt
+   print("mt = " .. tostring(mt))
+   rt.factory = object_factory(typename, prototype)
+   rt.new = function(...) return init_function(rt.factory, ...); end
+   rt.is = make_is_instance_function(mt)
+   return rt
+end
+
+
+initial_obj = new_recordtype(root_creator, "*recordtype*", root_prototype, function(...) return ...; end)
+
+initial_obj.new = function(typename, prototype, init_function)
+		     return new_recordtype(root_creator, typename, prototype, init_function)
+		  end
+
+initial_obj.id = function(...) return root_id; end
+initial_obj.type = function(...) return root_typename; end
+print(initial_obj.metatable)
+setmetatable(initial_obj, initial_obj.metatable)
+initial_obj.is = make_is_instance_function(initial_obj.metatable)
+
+--local is_self = make_is_instance_function(getmetatable(initial_obj))
+--local is_recordtype = make_is_instance_function(initial_obj.metatable)
+--initial_obj.is = function(obj) return is_self(obj) or is_recordtype(obj); end
+
+return initial_obj
+
+
+
+
+--[==[
+-- TODO: trash these numeric indices
+local TYPENAME = -1
+local MARK = -2
+
 local function read_only_table_error(...) error("read-only table", 2); end
-
-local function make_setter(proto)
-   return function(self, key, value)
-	     if rawget(proto, key) then rawset(self, key, value)
-	     else err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self[TYPENAME])); end
-	  end
-end
-
-local function make_getter(proto)
-   return function(self, key)
-	     if rawget(proto, key) then return nil; end
-	     err("invalid key '" .. tostring(key) .. "' for type " .. tostring(self[TYPENAME]))
-	  end
-end
 
 local function recordtype_tostring(self)
    return "<" .. self.type() .. " " .. self.id() .. ">"
@@ -88,8 +192,10 @@ end
 
 local function make_recordtype_id_function(kind)
    return function(self)
-	     if kind.is(self) then return lua_tostring(self):match("(0x%x*)") or "id/err"
-	     else err("argument not an instance of " .. kind.type()); end
+--             if kind.is(self) then return lua_tostring(self):match("(0x%x*)") or "id/err"
+--             else err("argument not an instance of " .. kind.type()); end
+	     if self==nil then return "::nil::"
+	     else return lua_tostring(self):match("(0x%x*)") or "id/err"; end
 	  end
 end
 
@@ -101,7 +207,8 @@ local function make_object_creator(typename, proto)
    setmetatable(proto, {__newindex = function(...) err("cannot add new record keys to prototype"); end})
    local metatable = { __newindex = make_setter(proto);
 		       __index = make_getter(proto);
-		       __tostring = recordtype_tostring; }
+		       __tostring = function(self) return "<" .. self.type() .. " " .. self.id() .. ">"; end
+		    }
    return function(template)
 	     template = template or {}
 	     local new = {}
@@ -122,7 +229,7 @@ end
    
 local recordtype_prototype = 
    { type = function(self) return "recordtype"; end,
-     id = false,
+     id = function(self) return lua_tostring(self):match("(0x%x*)"); end,
      new = false,
      is = false,
      next_field = true,
@@ -143,30 +250,35 @@ local function make_field_pairs_function(prototype)
    return function(self) return next_function, self, nil; end
 end
 
-local function make_is_instance_function(metatable)
-   assert(type(metatable)=="table")
-   return function(obj) return (getmetatable(obj)==metatable); end
-end
-
 local uninitialized_recordtype_creator = make_object_creator("recordtype", recordtype_prototype)
 
 -- TODO: implement recordtype.readonly and maybe other wrappers to use when making a prototype?
 -- e.g. {name=recordtype.readonly("anonymous")}
 
-local function recordtype_creator(parent, typename, prototype)
+local function recordtype_creator(parent, typename, prototype, uninitialized_instance, init_function)
    print("At the dawn of time...")
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    if type(prototype)~="table" then err("prototype not a table: " .. tostring(prototype)); end
 
-   local recordtype = uninitialized_recordtype_creator()
-   recordtype.next_field = make_field_next_function(prototype)
-   recordtype.fields = make_field_pairs_function(prototype)
-   recordtype.instance_type = typename
-   recordtype.is = make_is_instance_function(getmetatable(parent))
-   recordtype.id = make_recordtype_id_function(parent)
-   recordtype.new = function(typename, prototype)
-		       return recordtype_creator(recordtype, typename, prototype)
-		    end
+   return init_function(uninitialized_instance, typename, prototype, init_function)
+end
+
+function initialize_recordtype(rt, typename, prototype, init_function)
+   rt.next_field = make_field_next_function(prototype)
+   rt.fields = make_field_pairs_function(prototype)
+   rt.instance_type = typename
+   rt.is = make_is_instance_function(getmetatable(rt))
+   local idstring = lua_tostring(getmetatable(rt)):match("(0x%x*)")
+   rt.id = function(...) return idstring; end
+   local instance_creator = make_object_creator(typename, prototype)
+   rt.new = function(...) return init_function(instance_creator(), ...); end
+
+--   function(instance_typename, instance_prototype)
+--      return recordtype_creator(recordtype,
+--                                instance_typename,
+--                                instance_prototype,
+--                                make_ob...)
+--                    end
 
 --   local new_instance = make_new_record_function(typename, prototype, instance_metatable)--, recordtype_init_function)
 --   rectype.new = function(template)
@@ -181,20 +293,29 @@ local function recordtype_creator(parent, typename, prototype)
 --   return setmetatable({}, record_metatable)
 --end
 
-   return recordtype
+   return rt
 end
 
 local function init()
    local parent = setmetatable({}, {__index = {}})  -- dummy
-   local initial_object = recordtype_creator(parent, "recordtype", recordtype_prototype)
+   local initial_prototype = {}
+   initial_prototype.foo = 7
+   for k,v in pairs(recordtype_prototype) do initial_prototype[k] = v; end
+   local initial_object = recordtype_creator(parent,
+					     "ABC",
+					     initial_prototype,
+					     make_object_creator("RT", initial_prototype)(),
+					     function(...) return ...; end)
+   initialize_recordtype(initial_object, "RecordType", initial_prototype, recordtype_creator)
    initial_object.is = make_is_instance_function(getmetatable(initial_object))
-   initial_object.id = function(...) return "0x0"; end
+   local idstring = lua_tostring(parent):match("(0x%x*)")
+   initial_object.id = function(self) return idstring end
    return initial_object
 end
 
 return init()
    
---[==[
+---------------------------------------------------------------------------------------------------
 
 
 
