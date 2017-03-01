@@ -13,11 +13,19 @@
 -- that can hold any value; new keys cannot be added.  This recordtype module provides:
 --
 -- Create new record types
---     bintree = recordtype.new("BinaryTree", {value=NIL, left=NIL, right=NIL})
+--     rt = recordtype.NIL
+--     bintree = recordtype.new("BinaryTree", {value=rt_nil, left=rt_nil, right=rt_nil})
 -- 
 -- New record types like bintree support the following operations:
 --
--- bintree.new(...)
+--     b = bintree.new{value="the root node"}
+-- 
+-- The default object factory takes a template as an argument, e.g.
+-- 
+--     b = bintree.new{value="the root node"}
+--
+-- But often it is more clear and convenient to specify a custom interface for creating new
+-- records.  For example, a 3-argument creator for binary trees like new(value, left, right).
 
 
 -- Access values using regular Lua table accessors, e.g. obj.x and obj["x"] return the
@@ -31,6 +39,12 @@
 -- ast.is(x) returns true when x is an instance of the record type stored in the variable ast.
 --
 -- ast.new(...) creates a new instance of the ast record type
+--
+
+--
+-- recordtype.parent(...) 
+-- recordtype.is(...) 
+-- recordtype.typename(...) 
 --
 
 
@@ -186,7 +200,6 @@ function new_recordtype(parent, typename, prototype, init_function)
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
---   setmetatable(prototype, {__newindex = function(...) err("cannot add new keys to prototype"); end})
    init_function = init_function or function(parent, template) return parent.factory(template); end
    local rt = parent.factory(recordtype_prototype)
    local metatable

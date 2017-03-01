@@ -140,6 +140,21 @@ for k,v in pairs(w1) do
 end
 assert (count == 3)
 
+-- FROM THE DOCUMENTATION:
+rt_nil = recordtype.NIL
+bintree = recordtype.new("BinaryTree", {value=rt_nil, left=rt_nil, right=rt_nil})
+b = bintree.new{value="the root node"}
+assert (recordtype.is(bintree))
+assert (bintree.is(b))
+assert (b.value == "the root node")
+assert ((b.left == b.right) and (b.left == nil))
+
+b.left = bintree.new{value="root->left", right=bintree.new{value="root->left->right"}}
+assert (b.right == nil)   			    -- no change
+assert (b.left.value == "root->left")   	    -- new node
+assert (b.left.right.value == "root->left->right")   
+assert (b.left.left == nil)
+
 --[==[
 
 window.create_function = function(cw, c) local w=cw(); w.color=c; return w; end
