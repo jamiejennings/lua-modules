@@ -78,14 +78,13 @@ end
 -- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
 -- provide a stand-in value for users to put in prototype tables.  We automatically convert the
 -- value to an actual stored nil.
-local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype nil>"); end; })
+local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype NIL>"); end; })
 
 ---------------------------------------------------------------------------------------------------
 
 -- Need a set of unique values known only to the recordtype implementation.  In Lua, an empty
 -- table is a fresh object that is not = to any other object.
 
-local MARK = {}					    -- marks all objects created here
 local ID = {}					    -- index of object unique id
 local TYPENAME = {}				    -- index of object type name
 local PARENT = {}				    -- index of parent object
@@ -94,13 +93,13 @@ local PARENT = {}				    -- index of parent object
 
 local root = {}
 local root_id = lua_tostring(root):match("(0x%x*)")
-local root_typename = "recordtype root"
+local root_typename = "recordtype root"		    -- to visibly distinguish the root object
 
--- The tostring function looks up the typename so that we can !@#
+-- The tostring function looks up the typename so that we can !@# ?????????????
 local function make_instance_metatable(typename, proto)
    return { __newindex = make_setter(typename, proto);
 	    __index = make_getter(typename, proto);
-	    __tostring = function(self) return "<" .. rawget(self,TYPENAME) .. " " .. rawget(self,ID) .. ">"
+	    __tostring = function(self) return "<" .. tostring(rawget(self,TYPENAME)) .. " " .. tostring(rawget(self,ID)) .. ">"
 			 end
 	 }
 end
@@ -125,7 +124,6 @@ local function object_factory(parent, typename, proto)
       for k,v in pairs(proto) do
 	 if (not new[k]) and rawget(template, k)~=NIL then new[k] = v; end
       end
-      new[MARK] = MARK
       new[ID] = idstring
       new[TYPENAME] = typename
       new[PARENT] = parent
@@ -134,14 +132,15 @@ local function object_factory(parent, typename, proto)
    return creator, metatable
 end
 
-local recordtype_prototype = {typename = NIL,
-			      id = NIL,
-			      new = NIL,
+local recordtype_prototype = {new = NIL,
 			      is = NIL,
-			      metatable = NIL,
-			      factory = NIL,
-			   }
-local root_prototype = {}
+			      factory = NIL }
+
+local root_prototype = {typename = NIL,
+			id = NIL,
+			parent = NIL,
+			NIL = NIL }
+
 for k,v in pairs(recordtype_prototype) do root_prototype[k] = v; end
    
 function new_recordtype(parent, typename, prototype, init_function)
@@ -153,30 +152,37 @@ function new_recordtype(parent, typename, prototype, init_function)
    setmetatable(prototype, {__newindex = function(...) err("cannot add new keys to prototype"); end})
    init_function = init_function or function(parent) return parent.factory(); end
    local rt = parent.factory(recordtype_prototype)
---   local rt_typename = rawget(rt,TYPENAME)
---   rt.typename = function(...) return rt_typename; end
-   local rt_idstring = rawget(rt,ID)
-   rt.id = function(self) return rt_idstring; end
-   rt.factory, rt.metatable = object_factory(parent, typename, prototype)
-   rt.is = make_is_instance_function(rt.metatable)
+   rt.factory, metatable = object_factory(rt, typename, prototype)
+   rt.is = make_is_instance_function(metatable)
    rt.new = function(...) return init_function(rt, ...); end
    return rt
 end
 
 -- The primordial object has itself as a parent.
 local initial_obj = {}
-initial_obj[PARENT] = initial_obj
-initial_obj.factory, initial_obj.metatable = object_factory(initial_obj, root_typename, root_prototype)
+rawset(initial_obj, TYPENAME, root_typename)	    -- needed for parent() to work
+rawset(initial_obj, ID, root_id)		    -- needed for parent() to work
+initial_obj.factory, initial_obj_metatable = object_factory(initial_obj, root_typename, root_prototype)
+setmetatable(initial_obj, initial_obj_metatable) -- make recordtype.is(recordtype) be true
 initial_obj = new_recordtype(initial_obj, "recordtype", root_prototype)
+rawset(initial_obj, ID, root_id)		    -- yes, this needs to be set again
 
--- initial_obj now has all the properties of recordtype, including the typename "recordtype".
--- but we want to visibly distinguish the initial object for clarity while debugging.
-rawset(initial_obj, TYPENAME, root_typename)
+-- The primordial object has a new() function that creates new record types
+function initial_obj.new(typename, prototype, init_function)
+   return new_recordtype(initial_obj, typename, prototype, init_function)
+end
 
-initial_obj.new = function(typename, prototype, init_function)
-		     return new_recordtype(initial_obj, typename, prototype, init_function)
-		  end
-setmetatable(initial_obj, initial_obj.metatable)
+function attribute_getter(attribute)
+   return function(obj)
+	     if type(obj)~="table" then return nil
+	     else return rawget(obj, attribute); end
+	  end
+end
+
+initial_obj.typename = attribute_getter(TYPENAME)
+initial_obj.id = attribute_getter(ID)
+initial_obj.parent = attribute_getter(PARENT)
+initial_obj.NIL = NIL
 
 return initial_obj
 

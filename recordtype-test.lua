@@ -6,17 +6,43 @@
 
 recordtype = require("recordtype")
 
-assert (type(recordtype)=="table")
+-- These are applicable to all objects made by recordtype:
+assert (recordtype.typename and type(recordtype.typename)=="function")
+assert (recordtype.id and type(recordtype.id)=="function")
+assert (recordtype.parent and type(recordtype.parent)=="function")
+assert (recordtype.NIL)
+
+-- Sanity checks that should pass for all objects made by recordtype:
+function object_test(obj)
+   assert (type(obj)=="table")
+   assert (tonumber(tostring(obj):match("(0x%x*)")))
+   assert (recordtype.typename(obj))
+   assert (recordtype.id(obj))
+   assert (recordtype.parent(obj))
+   assert (tonumber(recordtype.id(obj):match("(0x%x*)")))
+end
+
+-- Sanity checks that should pass for all recordtypes, including recordtype itself
+function recordtype_test(rt_obj)
+   object_test(rt_obj)
+   assert (rt_obj.new and type(rt_obj.new)=="function")
+   assert (rt_obj.is and type(rt_obj.is)=="function")
+   assert (rt_obj.factory and type(rt_obj.factory)=="function")
+end
+
+recordtype_test(recordtype)
+assert (recordtype.typename(recordtype) == "recordtype root")
 
 window = recordtype.new("window", {width=100, height=400, color="red"})
-assert (type(window) == "table")
-assert (window.typename() == "recordtype")
-assert (window:typename() == "recordtype")
+recordtype_object_test(window)
+assert (recordtype.typename(window) == "recordtype")
 assert (recordtype.is(window))          
 
 w1 = window.new()
 
+object_test(w1)
 assert (window.is(w1))
+assert (not recordtype.is(w1))
 assert (recordtype.typename(w1) == "window")
 assert (tostring(w1):sub(1,10)=="<window 0x")
 assert (tostring(w1):sub(-1)==">")
@@ -35,23 +61,22 @@ assert (w1.width==99)
 
 ok, msg = pcall(function() print(w1.foo); end)
 assert (not ok)
-assert (msg:find("Invalid key"))
+assert (msg:find("invalid key"))
 
 ok, msg = pcall(function() w1.foo=123; end)
 assert (not ok)
-assert (msg:find("Invalid key"))
+assert (msg:find("invalid key"))
 
-ok, msg = pcall(window.id)			    -- no argument ==> error
-assert (not ok)
-ok, msg = pcall(window.id, {})			    -- argument not window instance ==> error
-assert (not ok)
-ok, msg = pcall(recordtype.id, w1)		    -- argument not recordtype instance ==> error
---assert (not ok)
+ok, val = pcall(recordtype.id)			    -- no argument ==> error
+assert  (ok and val==nil)
+ok, val = pcall(recordtype.id, {})		    -- argument not recordtype object ==> error
+assert (ok and val==nil)
+ok, val = pcall(recordtype.id, w1)		    -- argument not recordtype instance ==> error
+assert (ok and tonumber(val))
 
 assert (tonumber(recordtype.id(window)))
-assert (tonumber(window.id(w1)))
---TODO: enable this test
---assert (recordtype.id(window) ~= window.id(w1))
+assert (tonumber(recordtype.id(w1)))
+assert (recordtype.id(window) ~= recordtype.id(w1))
 
 function validate_w1(k, v)
    if k=="color" then assert(v=="blue"); return true
