@@ -7,67 +7,140 @@
 ----
 ---- (c) 2009, 2010, 2015, 2017 Jamie A. Jennings
 
--- DESCRIPTION:
---
--- A record is a Lua table that has the record_metatable.  A record has a fixed set of string keys
--- that can hold any value; new keys cannot be added.  This recordtype module provides:
---
--- Create new record types
---     rt = recordtype.NIL
---     bintree = recordtype.new("BinaryTree", {value=rt_nil, left=rt_nil, right=rt_nil})
--- 
--- New record types like bintree support the following operations:
---
---     b = bintree.new{value="the root node"}
--- 
--- The default object factory takes a template as an argument, e.g.
--- 
---     b = bintree.new{value="the root node"}
---
--- But often it is more clear and convenient to specify a custom interface for creating new
--- records.  For example, a 3-argument creator for binary trees like new(value, left, right).
+--[[
+
+DESCRIPTION:
+
+A record is a Lua table that has the record_metatable.  A record has a fixed set of string keys
+that can hold any value; new keys cannot be added.  This recordtype module provides:
+
+Create new record types
+    NIL = recordtype.NIL
+    bintree = recordtype.new("BinaryTree", {value="anonymous", left=NIL, right=NIL})
+
+The table argument to recordtype.new() is a prototype.  It declares all of the keys for the new
+record type, and it establishes their default values.  Because a key with a nil value in a Lua
+table is indistinguishable from a missing key, a record prototype cannot contain nil values.  The
+value recordtype.NIL is provided for use in prototypes.
+
+Record types like bintree support the following operations:
+    bintree.new()           create a new instance with default values
+    bintree.new(template)   create a new instance with values from template and defaults
+    bintree.is(obj)         returns true if obj was created via bintree.new()
+
+    Access values using regular Lua table accessors, e.g. obj.x and obj["x"] return the value of
+    key "x" in the record stored in the variable obj.  AN EXCEPTION IS RAISED when the key, x, is
+    not one of the fixed pre-defined keys for obj.
+
+    Set values using regular Lua table mechanisms, e.g. obj.x=9 and obj["x"]=9 both set the value
+    of key "x" to 9 in the record stored in the variable obj.  AN EXCEPTION IS RAISED when the
+    key, x, is not one of the fixed pre-defined keys for obj.
+
+E.g.
+    > b = bintree.new()
+    > b.value
+    anonymous
+    > b
+    <BinaryTree 0x7fd18542a3e0>
+    > bintree.is(b)
+    true
+    > recordtype.is(bintree)
+    true
+    > recordtype.is(b)
+    false
+    > b.val
+    stdin:1: recordtype: invalid key 'val' for type BinaryTree
+    stack traceback: [snip]
+
+The default object factory, invoked with bintree.new(), takes an optional template as an
+argument.  The template is used to initialize keys to values other than their defaults.
+
+    > b1 = bintree.new{value="The Root Node"}
+    > b1.value
+    The Root Node
+    > b1.left
+    nil
+    > 
+
+It is often more clear and convenient to specify a custom interface for creating new
+records.  For example, a 3-argument creator for binary trees, like new(value, left, right).
+
+The recordtype.new() function takes an optional third argument which is a custom object creator.
+When bintree.new(...) is called, your function is called with one additional argument, the parent
+object.  Calling parent.factory(t) is the equivalent of 'super()' in other OO systems. Here, t is
+an optional template holding any desired non-default initial values.
+
+   bintree2 = recordtype.new("BinaryTree", {value=NIL, left=NIL, right=NIL},
+			     function(parent, val, l, r)
+				-- validation of val, l, r can happen here
+				return parent.factory{value=val, left=l, right=r}
+			     end )
+   new = bintree2.new
+
+   b2 = new("Root", 
+	    new("Root->Left",
+		nil,
+		new("Root->Left->Right")))
 
 
--- Access values using regular Lua table accessors, e.g. obj.x and obj["x"] return the
--- value of key "x" in the record stored in the variable obj.
---
--- Set values using regular Lua table mechanisms, e.g. obj.x=9 and obj["x"]=9 both set the value
--- of key "x" to 9 in the record stored in the variable obj.
---
--- Iterate over the fields in a record using the regular Lua 'pairs' function.
---
--- ast.is(x) returns true when x is an instance of the record type stored in the variable ast.
---
--- ast.new(...) creates a new instance of the ast record type
---
+The regular Lua 'pairs' function will iterate over the fields of a record, e.g.
+			      
+    > for k,v in pairs(b2) do print(k,v) end
+    left	<BinaryTree 0x7fd18541f240>
+    value	Root
+    > 
 
---
--- recordtype.parent(...) 
--- recordtype.is(...) 
--- recordtype.typename(...) 
---
+Finally, there are some functions defined in recordtype that may be useful.  These functions can
+be applied to any Lua object, and non-nil values will be returned for objects created by the
+recordtype module.
+
+    recordtype.parent(obj)    -- return the parent object (the unique "type") for obj
+    recordtype.typename(obj)  -- return the pretty type name for obj
+
+E.g.
+    > recordtype.typename(b)
+    BinaryTree
+    > recordtype.typename(bintree)
+    recordtype
+    > recordtype.typename(recordtype)
+    recordtype root
+    > recordtype.parent(b)
+    <recordtype 0x7fd1854345d0>
+    > recordtype.parent(b) == bintree
+    true
+    > recordtype.parent(bintree)
+    <recordtype root 0x7fd185606270>
+    > recordtype.parent(bintree) == recordtype
+    true
+    > recordtype.parent(recordtype)
+    <recordtype root 0x7fd185606270>
+    > recordtype.parent(recordtype) == recordtype
+    true
+    >     
 
 
---
--- OBJECTIVES:
---
--- (1) Without records, a typo in a table key results in a nil value instead of an error.  The
--- nil value propagates until (possibly) an exception is raised far from the site of the typo.
---
--- (2) When debugging, a table looks like a table, e.g. "table: 0x7fb008603440".  It's useful to
--- know unambiguously what this table is supposed to be, e.g. "parser 0x7f8558f1c200"
---
--- (3) When creating an "object" using a table, it is easy to forget to initialize all the keys,
--- or to miss a key due to a typo.  Records ensure this cannot happen.
---
--- LIMITATIONS:
---
--- The Lua 'next' function will iterate over an entire object, exposing the internal representation.
--- As with other Lua "objects", rawset and rawget also break the abstraction.
--- 
+OBJECTIVES:
+
+(1) Without records, a typo in a table key results in retreiving a nil value or setting the wrong
+key.  Such errors cause bugs to appear far from the site of the typo.
+
+(2) When debugging, a table looks like a table, e.g. "table: 0x7fb008603440".  It is useful to
+know unambiguously what this table is supposed to be, e.g. "<BinaryTree 0x7fd185431450>".
+
+(3) Using plain tables instead of records, it is easy to forget to initialize all the keys, or to
+miss a key due to a typo.  Records ensure this cannot happen.
+
+LIMITATIONS:
+
+* The Lua 'next' function will iterate over an entire object, exposing the internal
+  representation. Use 'pairs'. 
+
+* As is commonly the case, using rawset and rawget will also break the abstraction.
+
+
+--]]
 
 ---------------------------------------------------------------------------------------------------
--- 
 -- Cache globals for code that might run under sandboxing 
 --
 local assert= assert
@@ -111,7 +184,7 @@ local function make_getter(typename, proto)
 	  end
 end
 
--- obj is an instance of parent iff the metatable of obj is the one  assigned to all children of parent 
+-- All instances derived from a parent have the same metatable, and that is how we identify them
 local function make_is_instance_function(metatable)
    assert(type(metatable)=="table")
    return function(obj) return (getmetatable(obj)==metatable); end
@@ -123,9 +196,8 @@ end
 local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype NIL>"); end; })
 
 ---------------------------------------------------------------------------------------------------
-
--- Need a set of unique values known only to the recordtype implementation.  In Lua, an empty
--- table is a fresh object that is not = to any other object.
+-- We need a set of unique values known only to the recordtype implementation.  In Lua, an empty
+-- table is a fresh object that is not == to any other object.
 
 local ID = {}					    -- index of object unique id
 local TYPENAME = {}				    -- index of object type name
@@ -135,7 +207,7 @@ local PARENT = {}				    -- index of parent object
 
 local root = {}
 local root_id = tostring(root):match("(0x%x*)")
-local root_typename = "recordtype root"		    -- to visibly distinguish the root object
+local root_typename = "recordtype root"		    -- to visually distinguish the root object
 
 local function field_next(self, optional_key)
    local key = optional_key
@@ -170,10 +242,10 @@ local function object_factory(parent, typename, proto)
       local idstring = tostring(new):match("(0x%x*)") or "id/error"
       for k,v in pairs(template) do
 	 if proto[k]==nil then err("invalid key '" .. tostring(k) .. "' for type " .. typename); end
-	 new[k] = v
+	 if v~=NIL then new[k] = v; end
       end
       for k,v in pairs(proto) do
-	 if (not new[k]) and rawget(proto, k)~=NIL then new[k] = v; end
+	 if (not new[k]) and template[k]~=NIL and rawget(proto, k)~=NIL then new[k] = v; end
       end
       new[ID] = idstring
       new[TYPENAME] = typename
@@ -190,7 +262,8 @@ local recordtype_prototype = {new = NIL,
 local root_prototype = {typename = NIL,
 			id = NIL,
 			parent = NIL,
-			NIL = NIL }
+			NIL = NIL,
+		        ABOUT = ABOUT }
 
 for k,v in pairs(recordtype_prototype) do root_prototype[k] = v; end
    
@@ -200,27 +273,29 @@ function new_recordtype(parent, typename, prototype, init_function)
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
-   init_function = init_function or function(parent, template) return parent.factory(template); end
+   init_function = init_function or function(parent, ...) return parent.factory(...); end
    local rt = parent.factory(recordtype_prototype)
    local metatable
    rt.factory, metatable = object_factory(rt, typename, prototype)
    rt.is = make_is_instance_function(metatable)
-   rt.new = function(template) return init_function(rt, template); end
+   rt.new = function(...) return init_function(rt, ...); end
    return rt
 end
 
--- The primordial object has itself as a parent.
-local initial_obj = {}
-rawset(initial_obj, TYPENAME, root_typename)	    -- needed for parent() to work
-rawset(initial_obj, ID, root_id)		    -- needed for parent() to work
-initial_obj.factory, initial_obj_metatable = object_factory(initial_obj, root_typename, root_prototype)
-setmetatable(initial_obj, initial_obj_metatable) -- make recordtype.is(recordtype) be true
-initial_obj = new_recordtype(initial_obj, "recordtype", root_prototype)
-rawset(initial_obj, ID, root_id)		    -- yes, this needs to be set again
+-- The primordial object has itself as a parent.  Consequently, it is awkward to create.  However,
+-- we only have to do this once.
+
+rawset(root, TYPENAME, root_typename)	    -- needed for parent() to work
+rawset(root, ID, root_id)		    -- needed for parent() to work
+root.factory, root_metatable = object_factory(root, root_typename, root_prototype)
+setmetatable(root, root_metatable) -- make recordtype.is(recordtype) be true
+root = new_recordtype(root, "recordtype", root_prototype)
+rawset(root, ID, root_id)		    -- yes, this needs to be set again
+rawset(root, PARENT, root)
 
 -- The primordial object has a new() function that creates new record types
-function initial_obj.new(typename, prototype, init_function)
-   return new_recordtype(initial_obj, typename, prototype, init_function)
+function root.new(typename, prototype, init_function)
+   return new_recordtype(root, typename, prototype, init_function)
 end
 
 function attribute_getter(attribute)
@@ -230,24 +305,19 @@ function attribute_getter(attribute)
 	  end
 end
 
-initial_obj.typename = attribute_getter(TYPENAME)
-initial_obj.id = attribute_getter(ID)
-initial_obj.parent = attribute_getter(PARENT)
-initial_obj.NIL = NIL
+root.typename = attribute_getter(TYPENAME)
+root.id = attribute_getter(ID)
+root.parent = attribute_getter(PARENT)
+root.NIL = NIL
 
-return initial_obj
-
+return root
 
 
 ---------------------------------------------------------------------------------------------------
 -- To do:
 
--- DONE Turn recordtype.new into a prototype-based function that calls make_new_record_function.
-
--- DONE Ensure that 'pairs' iterates over the keys and not the internal slots.
-
--- Keep a list of defined type names, and print a warning when redefining an
--- existing type name.
+-- Maybe keep a list of defined type names, and print a warning when redefining an existing type
+-- name.  This can happen during development and it is not easily observed.
 
 -- Consider supporting a weak population of instances for each type.
 

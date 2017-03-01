@@ -34,7 +34,7 @@ recordtype_test(recordtype)
 assert (recordtype.typename(recordtype) == "recordtype root")
 
 window = recordtype.new("window", {width=100, height=400, color="red"})
-recordtype_object_test(window)
+recordtype_test(window)
 assert (recordtype.typename(window) == "recordtype")
 assert (recordtype.is(window))          
 
@@ -141,8 +141,20 @@ end
 assert (count == 3)
 
 -- FROM THE DOCUMENTATION:
-rt_nil = recordtype.NIL
-bintree = recordtype.new("BinaryTree", {value=rt_nil, left=rt_nil, right=rt_nil})
+NIL = recordtype.NIL
+bintree = recordtype.new("BinaryTree", {value="anonymous", left=NIL, right=NIL})
+b1 = bintree.new()
+assert(b1.value=="anonymous")
+b1 = bintree.new{value=NIL}
+assert(b1.value==nil)
+b1.value = 555
+assert(b1.value==555)
+b1.value = nil
+assert(b1.value==nil)
+-- NIL is meant (and needed) only for templates, not for regular assignment statements
+b1.value = NIL
+assert(b1.value==NIL)
+
 b = bintree.new{value="the root node"}
 assert (recordtype.is(bintree))
 assert (bintree.is(b))
@@ -154,6 +166,41 @@ assert (b.right == nil)   			    -- no change
 assert (b.left.value == "root->left")   	    -- new node
 assert (b.left.right.value == "root->left->right")   
 assert (b.left.left == nil)
+
+function walk(tree, nodelist)
+   nodelist = nodelist or {}
+   if tree then
+      walk(tree.left, nodelist)
+      table.insert(nodelist, tree.value)
+      walk(tree.right, nodelist)
+   end
+   return nodelist
+end
+
+ls = walk(b)
+assert (ls[1]=="root->left")
+assert (ls[2]=="root->left->right")
+assert (ls[3]=="the root node")
+
+bintree2 = recordtype.new("BinaryTree",
+			  {value=NIL, left=NIL, right=NIL},
+			  function(parent, val, l, r)
+			     -- validation of val, l, r can happen here
+			     return parent.factory{value=val, left=l, right=r}
+			  end )
+
+new = bintree2.new
+b2 = new("Root",
+	 new("Root->Left",
+	     nil,
+	     new("Root->Left->Right")))
+
+ls = walk(b2)
+assert (ls[1]=="Root->Left")
+assert (ls[2]=="Root->Left->Right")
+assert (ls[3]=="Root")
+
+
 
 --[==[
 
