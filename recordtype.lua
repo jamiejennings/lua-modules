@@ -3,7 +3,7 @@
 ---- recordtype.lua   (a 2017 reimplementation of recordtype.lua)
 ----
 ---- Inspired by the define-record Scheme macro by Jonathan Rees, and the Art of the Meta-Object
----- Protocol.  Records are simple objects, and the recordtype module is prototype-based.
+---- Protocol.  Records are simple objects, and the recordtype module is sort of prototype-based.
 ----
 ---- (c) 2009, 2010, 2015, 2017 Jamie A. Jennings
 
@@ -11,19 +11,19 @@
 
 DESCRIPTION:
 
-A record is a Lua table that has the record_metatable.  A record has a fixed set of string keys
-that can hold any value; new keys cannot be added.  This recordtype module provides:
+A record has a fixed set of string keys that can hold any value; new keys cannot be added.
+Records are implemented using Lua tables, and specified using a prototype, which is a table
+containing all of the valid keys and their default values.  E.g.
 
-Create new record types
     NIL = recordtype.NIL
     bintree = recordtype.new("BinaryTree", {value="anonymous", left=NIL, right=NIL})
 
 The table argument to recordtype.new() is a prototype.  It declares all of the keys for the new
 record type, and it establishes their default values.  Because a key with a nil value in a Lua
 table is indistinguishable from a missing key, a record prototype cannot contain nil values.  The
-value recordtype.NIL is provided for use in prototypes.
+value recordtype.NIL is provided for use in prototypes, and causes nil to be the default value.
 
-Record types like bintree support the following operations:
+Record types, like bintree, support the following operations:
     bintree.new()           create a new instance with default values
     bintree.new(template)   create a new instance with values from template and defaults
     bintree.is(obj)         returns true if obj was created via bintree.new()
@@ -193,27 +193,26 @@ end
 -- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
 -- provide a stand-in value for users to put in prototype tables.  We automatically convert the
 -- value to an actual stored nil.
+
 local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype NIL>"); end; })
 
 ---------------------------------------------------------------------------------------------------
 -- We need a set of unique values known only to the recordtype implementation.  In Lua, an empty
 -- table is a fresh object that is not == to any other object.
-
+--
 local ID = {}					    -- index of object unique id
 local TYPENAME = {}				    -- index of object type name
 local PARENT = {}				    -- index of parent object
 
 ---------------------------------------------------------------------------------------------------
 
-local root = {}
+local root = {}					    -- the primordial object
 local root_id = tostring(root):match("(0x%x*)")
 local root_typename = "recordtype root"		    -- to visually distinguish the root object
 
 local function field_next(self, optional_key)
    local key = optional_key
-   repeat
-      key = next(self, key)
-   until key==nil or type(key)=="string"
+   repeat key = next(self, key) until key==nil or type(key)=="string"
    if key~=nil then return key, rawget(self, key)
    else return nil; end
 end
@@ -225,9 +224,10 @@ end
 local function make_instance_metatable(typename, proto)
    return { __newindex = make_setter(typename, proto),
 	    __index = make_getter(typename, proto),
-	    __tostring = function(self) return "<" .. tostring(rawget(self,TYPENAME)) .. " " .. tostring(rawget(self,ID)) .. ">"
-			 end,
-	    __pairs = field_pairs }
+	    __pairs = field_pairs,
+	    __tostring = function(self)
+			    return "<" .. tostring(rawget(self,TYPENAME)) .. " " .. tostring(rawget(self,ID)) .. ">"
+			 end }
 end
 
 local function object_factory(parent, typename, proto)
@@ -255,10 +255,12 @@ local function object_factory(parent, typename, proto)
    return creator, metatable
 end
 
+-- All recordtypes, which are created by recordtype.new(...), have these keys:
 local recordtype_prototype = {new = NIL,
 			      is = NIL,
 			      factory = NIL }
 
+-- The primordial object has these additional keys:
 local root_prototype = {typename = NIL,
 			id = NIL,
 			parent = NIL,
