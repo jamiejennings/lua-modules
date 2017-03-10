@@ -19,7 +19,8 @@ function object_test(obj)
    assert (recordtype.typename(obj))
    assert (recordtype.id(obj))
    assert (recordtype.parent(obj))
-   assert (tonumber(recordtype.id(obj):match("(0x%x*)")))
+   assert (type(recordtype.id(obj))=="string")
+   assert (tonumber(recordtype.id(obj):match("(0x%x+)")))
 end
 
 -- Sanity checks that should pass for all recordtypes, including recordtype itself
@@ -44,7 +45,7 @@ object_test(w1)
 assert (window.is(w1))
 assert (not recordtype.is(w1))
 assert (recordtype.typename(w1) == "window")
-assert (tostring(w1):sub(1,10)=="<window 0x")
+assert (tostring(w1):sub(1,11)=="<window: 0x")
 assert (tostring(w1):sub(-1)==">")
 
 assert (w1.width == 100)

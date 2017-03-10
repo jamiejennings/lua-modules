@@ -170,24 +170,38 @@ local function err(str)
    error("recordtype: " .. str, 3)
 end
 
-local function make_setter(typename, proto)
-   return function(self, key, value)
-	     if rawget(proto, key) then rawset(self, key, value)
-	     else err("invalid key '" .. tostring(key) .. "' for type " .. typename); end
-	  end
-end
-
-local function make_getter(typename, proto)
-   return function(self, key)
-	     if rawget(proto, key) then return nil; end
-	     err("invalid key '" .. tostring(key) .. "' for type " .. typename)
-	  end
-end
-
--- All instances derived from a parent have the same metatable, and that is how we identify them
+-- All instances derived from a parent have the same metatable
 local function make_is_instance_function(metatable)
    assert(type(metatable)=="table")
    return function(obj) return (getmetatable(obj)==metatable); end
+end
+
+local function index(self, key)
+   local mt = getmetatable(self)
+   if mt.proto[key] then return nil;
+   else err("invalid key '" .. tostring(key) .. "' for type " .. mt.typename); end
+end
+
+local function newindex(self, key, value)
+   local mt = getmetatable(self)
+   if mt.proto[key] then rawset(self, key, value)
+   else err("invalid key '" .. tostring(key) .. "' for type " .. mt.typename); end
+end
+
+-- We need a unique value known only to the recordtype implementation.  In Lua, an empty
+-- table is a fresh object that is not == to any other object.
+local ID = {}					    -- index of object unique id
+
+local function compute_id_string(self)
+   if type(self)~="table" then return nil; end
+   local id_object = rawget(self, ID)
+   if not id_object then return nil; end
+   return tostring(id_object):match("(0x%x+)") or "id/error"
+end
+
+local function instance_tostring(self)
+   local mt = getmetatable(self)
+   return "<" .. mt.typename .. ": " .. compute_id_string(self) .. ">"
 end
 
 -- It is not possible to declare a constant table in Lua in which a key has the value nil.  So, we
@@ -196,18 +210,8 @@ end
 
 local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype NIL>"); end; })
 
----------------------------------------------------------------------------------------------------
--- We need a set of unique values known only to the recordtype implementation.  In Lua, an empty
--- table is a fresh object that is not == to any other object.
---
-local ID = {}					    -- index of object unique id
-local TYPENAME = {}				    -- index of object type name
-local PARENT = {}				    -- index of parent object
-
----------------------------------------------------------------------------------------------------
-
 local root = {}					    -- the primordial object
-local root_id = tostring(root):match("(0x%x*)")
+local root_id = 0
 local root_typename = "recordtype root"		    -- to visually distinguish the root object
 
 local function field_next(self, optional_key)
@@ -221,13 +225,14 @@ local function field_pairs(self)
    return field_next, self, nil
 end
 
-local function make_instance_metatable(typename, proto)
-   return { __newindex = make_setter(typename, proto),
-	    __index = make_getter(typename, proto),
-	    __pairs = field_pairs,
-	    __tostring = function(self)
-			    return "<" .. tostring(rawget(self,TYPENAME)) .. " " .. tostring(rawget(self,ID)) .. ">"
-			 end }
+local function make_instance_metatable(parent, typename, proto)
+   return { __index=index,
+	    __newindex=newindex,
+	    __tostring=instance_tostring,
+	    __pairs=field_pairs,
+	    parent = parent,
+	    typename = typename,
+	    proto = proto }
 end
 
 local function object_factory(parent, typename, proto)
@@ -235,23 +240,29 @@ local function object_factory(parent, typename, proto)
    for k,v in pairs(proto) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
-   local metatable = make_instance_metatable(typename, proto)
-   local function creator(template)
-      template = template or {}
-      local new = {}
-      local idstring = tostring(new):match("(0x%x*)") or "id/error"
-      for k,v in pairs(template) do
-	 if proto[k]==nil then err("invalid key '" .. tostring(k) .. "' for type " .. typename); end
-	 if v~=NIL then new[k] = v; end
+   local metatable = make_instance_metatable(parent, typename, proto)
+   local proto_len = 0
+   for k,v in pairs(proto) do proto_len = proto_len + 1; end
+   local function creator(data)
+      data = data or {}
+      local data_len = 0
+      local nils
+      for k,v in pairs(data) do
+	 data_len = data_len + 1
+	 if rawget(proto, k)==nil then
+	    err("invalid key '" .. tostring(k) .. "' for type " .. typename)
+	 end
+	 if v==NIL then if not nils then nils = {}; end; table.insert(nils, k); end
+      end -- for
+      if data_len < proto_len then
+	 for k,v in pairs(proto) do
+	    if rawget(data, k)==nil and v~=NIL then rawset(data, k, v); end
+	 end
       end
-      for k,v in pairs(proto) do
-	 if (not new[k]) and template[k]~=NIL and rawget(proto, k)~=NIL then new[k] = v; end
-      end
-      new[ID] = idstring
-      new[TYPENAME] = typename
-      new[PARENT] = parent
-      return setmetatable(new, metatable)
-   end
+      if nils then for _,k in ipairs(nils) do rawset(data, k, nil); end; end
+      data[ID] = {}				    -- a unique object
+      return setmetatable(data, metatable)
+   end -- function creator
    return creator, metatable
 end
 
@@ -269,14 +280,20 @@ local root_prototype = {typename = NIL,
 
 for k,v in pairs(recordtype_prototype) do root_prototype[k] = v; end
    
-function new_recordtype(parent, typename, prototype, init_function)
+local function copy(tbl)
+   local new = {}
+   for k,v in pairs(tbl) do new[k] = v; end
+   return new
+end
+
+local function new_recordtype(parent, typename, prototype, init_function)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    prototype = prototype or {}
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
    init_function = init_function or function(parent, ...) return parent.factory(...); end
-   local rt = parent.factory(recordtype_prototype)
+   local rt = parent.factory(copy(recordtype_prototype))
    local metatable
    rt.factory, metatable = object_factory(rt, typename, prototype)
    rt.is = make_is_instance_function(metatable)
@@ -287,29 +304,37 @@ end
 -- The primordial object has itself as a parent.  Consequently, it is awkward to create.  However,
 -- we only have to do this once.
 
-rawset(root, TYPENAME, root_typename)	    -- needed for parent() to work
-rawset(root, ID, root_id)		    -- needed for parent() to work
-root.factory, root_metatable = object_factory(root, root_typename, root_prototype)
-setmetatable(root, root_metatable) -- make recordtype.is(recordtype) be true
-root = new_recordtype(root, "recordtype", root_prototype)
-rawset(root, ID, root_id)		    -- yes, this needs to be set again
-rawset(root, PARENT, root)
+--rawset(root, ID, root_id)		    -- needed for parent() to work
+local root_factory, root_metatable = object_factory(root, root_typename, root_prototype)
+root = {factory = root_factory}
+--setmetatable(root, {typename = root_typename, next_id=1000})
+
+local rp2 = {}
+for k,v in pairs(root_prototype) do if k~=ID then rp2[k]=v; end; end
+root = new_recordtype(root, "recordtype", rp2)
+--root[ID] = root_id
+--setmetatable(root, root_metatable) -- make recordtype.is(recordtype) be true
+
+--rawset(root, ID, root_id)		    -- yes, this needs to be set again
+--rawset(root, PARENT, root)
 
 -- The primordial object has a new() function that creates new record types
 function root.new(typename, prototype, init_function)
    return new_recordtype(root, typename, prototype, init_function)
 end
 
-function attribute_getter(attribute)
+local function attribute_getter(attribute)
    return function(obj)
-	     if type(obj)~="table" then return nil
-	     else return obj[attribute]; end
+	     if type(obj)=="table" then
+		local mt = getmetatable(obj)
+		if mt then return mt[attribute]; end
+	     end
 	  end
 end
 
-root.typename = attribute_getter(TYPENAME)
-root.id = attribute_getter(ID)
-root.parent = attribute_getter(PARENT)
+root.typename = attribute_getter("typename")
+root.parent = attribute_getter("parent")
+root.id = compute_id_string
 root.NIL = NIL
 
 return root
