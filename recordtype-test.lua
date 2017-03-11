@@ -110,12 +110,8 @@ assert (d1.lock == "bolt")
 d1.color = nil
 assert (d1.color == nil)
 
---d2=door({handed="right"})
---assert (d2.handed == "right")
-
-
-
-
+d2=door.new({handed="right"})
+assert (d2.handed == "right")
 
 function validate_w1(k, v)
    if k=="color" then assert(v=="blue"); return true
@@ -189,9 +185,9 @@ assert (ls[3]=="the root node")
 
 bintree2 = recordtype.new("BinaryTree",
 			  {value=NIL, left=NIL, right=NIL},
-			  function(parent, val, l, r)
+			  function(val, l, r)
 			     -- validation of val, l, r can happen here
-			     return parent.factory{value=val, left=l, right=r}
+			     return bintree2.factory{value=val, left=l, right=r}
 			  end,
 			  function(self) 
 			     return recordtype.typename(self) .. "/" .. recordtype.id(self)
@@ -209,6 +205,12 @@ ls = walk(b2)
 assert (ls[1]=="Root->Left")
 assert (ls[2]=="Root->Left->Right")
 assert (ls[3]=="Root")
+
+
+---------------------------------------------------------------------------------------------------
+-- More with custom initializers
+---------------------------------------------------------------------------------------------------
+
 
 
 

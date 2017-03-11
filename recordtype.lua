@@ -52,8 +52,11 @@ E.g.
     stdin:1: recordtype: invalid key 'val' for type BinaryTree
     stack traceback: [snip]
 
-The default object factory, invoked with bintree.new(), takes an optional template as an
-argument.  The template is used to initialize keys to values other than their defaults.
+By default, bintree.new(t) simply calls bintree.factory(t), where t is a "template", i.e. a plain
+table. The template is used to initialize keys to values other than their defaults.
+
+** N.B. The template table is *converted* into an object by the factory.  This is an optimization for
+** the common case in which the template is a constant table.  E.g.
 
     > b1 = bintree.new{value="The Root Node"}
     > b1.value
@@ -62,48 +65,66 @@ argument.  The template is used to initialize keys to values other than their de
     nil
     > 
 
-It is often more clear and convenient to specify a custom interface for creating new
-records.  For example, a 3-argument creator for binary trees, like new(value, left, right).
+If you want to create a template that can be reused, then simply supply your own "new" function
+which makes a copy of the table given as its argument.  The recordtype.new() function takes an
+optional 3rd argument which is a custom object creator.  E.g.
 
-The recordtype.new() function takes an optional 3rd argument which is a custom object creator.
-When bintree.new(...) is called, your function is called with one additional argument, the parent
-object.  Calling parent.factory(t) is the equivalent of 'super()' in other OO systems. Here, t is
+    > function copy(tbl) local new = {}; for k,v in pairs(tbl) do new[k] = v; end; return new; end
+    > bintree = recordtype.new("BinaryTree", 
+                               {value=NIL, left=NIL, right=NIL}, 
+                               function(t) return bintree.factory(copy(t)) end)
+    > template = {value = "Value from template"}
+    > bb1 = bintree.new(template)
+    > bb1, bb1.value
+    <BinaryTree: 0x7fce56c0bd20>	Value from template
+    > bb2 = bintree.new(template)
+    > bb2, bb2.value
+    <BinaryTree: 0x7fce56c0c310>	Value from template
+    > bb1==bb2
+    false
+    > 
+
+Calling bintree.factory(t) is the equivalent of 'super()' in other OO systems. Here, t is
 an optional template holding any desired non-default initial values.
 
-Also, recordtype.new() takes an optional 4th argument which is a custom tostring function.  In the
-example below, we use the "universal" recordtype.typename and recordtype.id functions, which work
-on any object created by the recordtype module.
+It is often more clear and convenient to specify a custom interface for creating new records,
+instead of using a template.  For example, we may want a 3-argument creator for binary trees, like
+new(value, left, right).
+
+Note also that recordtype.new() takes an optional 4th argument which is a custom tostring
+function.  In the example below, we use the "universal" functions recordtype.typename and
+recordtype.id, which work on any object created by the recordtype module.
 
    bintree2 = recordtype.new("BinaryTree", {value=NIL, left=NIL, right=NIL},
-			     function(parent, val, l, r)
+			     function(val, l, r)
 				-- validation of val, l, r can happen here
-				return parent.factory{value=val, left=l, right=r}
+				return bintree2.factory{value=val, left=l, right=r}
 			     end,
 			     function(self) 
                                 return recordtype.typename(self) .. "/" .. recordtype.id(self)
                              end)
    new = bintree2.new
-
    b2 = new("Root", 
 	    new("Root->Left",
 		nil,
 		new("Root->Left->Right")))
 
-
 The regular Lua 'pairs' function will iterate over the fields of a record, e.g.
 			      
-
     > for k,v in pairs(b2) do print(k,v) end
     left	BinaryTree/0x7fe5aff0b5a0
     value	Root
     > 
 
-Finally, there are some functions defined in recordtype that may be useful.  These functions can
-be applied to any Lua object, and non-nil values will be returned for objects created by the
-recordtype module.
+Finally, there are some additional functions defined in recordtype that may be useful.  These
+functions can be applied to any Lua object, and non-nil values will be returned for objects
+created by the recordtype module.  Thus, these can be used to determine whether any Lua object is
+one that was created by the recordtype module.
 
     recordtype.parent(obj)    -- return the parent object (the unique "type") for obj
     recordtype.typename(obj)  -- return the pretty type name for obj
+    recordtype.id(obj)        -- return a string representation of a unique id for obj
+    recordtype.tostring(obj)  -- apply the default recordtype module's default tostring function
 
 E.g.
     > recordtype.typename(b)
@@ -171,7 +192,7 @@ local ABOUT=
     description= "Provides records implemented as tables with a fixed set of keys",
     license= "MIT/X11",
     copyright= "Copyright (c) 2009, 2010, 2015, 2017 Jamie A. Jennings",
-    version= "2.1",
+    version= "2.2",
     lua_version= "5.3"
 }
 
@@ -297,18 +318,16 @@ local function copy(tbl)
    return new
 end
 
-local function new_recordtype(parent, typename, prototype, init_function, tostring_function)
+local function new_recordtype(parent, typename, prototype, new_function, tostring_function)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    prototype = prototype or {}
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
-   init_function = init_function or function(parent, ...) return parent.factory(...); end
-   tostring_function = tostring_function or instance_tostring
    local rt = parent.factory(copy(recordtype_prototype))
-   rt.factory = object_factory(rt, typename, prototype, tostring_function)
+   rt.factory = object_factory(rt, typename, prototype, tostring_function or instance_tostring)
    rt.is = make_is_instance_function(rt)
-   rt.new = function(...) return init_function(rt, ...); end
+   rt.new = new_function or function(...) return rt.factory(...); end
    return rt
 end
 
