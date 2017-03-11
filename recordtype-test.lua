@@ -12,6 +12,7 @@ assert (recordtype.is(recordtype))
 assert (recordtype.typename and type(recordtype.typename)=="function")
 assert (recordtype.id and type(recordtype.id)=="function")
 assert (recordtype.parent and type(recordtype.parent)=="function")
+assert (recordtype.tostring and type(recordtype.tostring)=="function")
 assert (recordtype.NIL)
 
 -- Sanity checks that should pass for all objects made by recordtype:
@@ -191,7 +192,10 @@ bintree2 = recordtype.new("BinaryTree",
 			  function(parent, val, l, r)
 			     -- validation of val, l, r can happen here
 			     return parent.factory{value=val, left=l, right=r}
-			  end )
+			  end,
+			  function(self) 
+			     return recordtype.typename(self) .. "/" .. recordtype.id(self)
+			  end)
 
 new = bintree2.new
 b2 = new("Root",
@@ -199,6 +203,8 @@ b2 = new("Root",
 	     nil,
 	     new("Root->Left->Right")))
 
+assert(tostring(b2):match("^BinaryTree/0x"))
+assert(recordtype.tostring(b2):match("^<BinaryTree: 0x"))
 ls = walk(b2)
 assert (ls[1]=="Root->Left")
 assert (ls[2]=="Root->Left->Right")

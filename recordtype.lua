@@ -65,16 +65,23 @@ argument.  The template is used to initialize keys to values other than their de
 It is often more clear and convenient to specify a custom interface for creating new
 records.  For example, a 3-argument creator for binary trees, like new(value, left, right).
 
-The recordtype.new() function takes an optional third argument which is a custom object creator.
+The recordtype.new() function takes an optional 3rd argument which is a custom object creator.
 When bintree.new(...) is called, your function is called with one additional argument, the parent
 object.  Calling parent.factory(t) is the equivalent of 'super()' in other OO systems. Here, t is
 an optional template holding any desired non-default initial values.
+
+Also, recordtype.new() takes an optional 4th argument which is a custom tostring function.  In the
+example below, we use the "universal" recordtype.typename and recordtype.id functions, which work
+on any object created by the recordtype module.
 
    bintree2 = recordtype.new("BinaryTree", {value=NIL, left=NIL, right=NIL},
 			     function(parent, val, l, r)
 				-- validation of val, l, r can happen here
 				return parent.factory{value=val, left=l, right=r}
-			     end )
+			     end,
+			     function(self) 
+                                return recordtype.typename(self) .. "/" .. recordtype.id(self)
+                             end)
    new = bintree2.new
 
    b2 = new("Root", 
@@ -85,8 +92,9 @@ an optional template holding any desired non-default initial values.
 
 The regular Lua 'pairs' function will iterate over the fields of a record, e.g.
 			      
+
     > for k,v in pairs(b2) do print(k,v) end
-    left	<BinaryTree: 0x7fd18541f240>
+    left	BinaryTree/0x7fe5aff0b5a0
     value	Root
     > 
 
@@ -163,7 +171,7 @@ local ABOUT=
     description= "Provides records implemented as tables with a fixed set of keys",
     license= "MIT/X11",
     copyright= "Copyright (c) 2009, 2010, 2015, 2017 Jamie A. Jennings",
-    version= "2.0",
+    version= "2.1",
     lua_version= "5.3"
 }
 
@@ -224,22 +232,25 @@ local function field_pairs(self)
    return field_next, self, nil
 end
 
-local function make_instance_metatable(parent, typename, proto)
+local function make_instance_metatable(parent, typename, proto, tostring_function)
    return { __index=index,
 	    __newindex=newindex,
-	    __tostring=instance_tostring,
+	    __tostring=tostring_function,
 	    __pairs=field_pairs,
 	    parent = parent,
 	    typename = typename,
 	    proto = proto }
 end
 
-local function object_factory(parent, typename, proto)
+local function object_factory(parent, typename, proto, tostring_function)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
+   if type(proto)~="table" then err("prototype not a table: " .. tostring(proto)); end
+   if type(tostring_function)~="function" then err("tostring_function not a function: " .. tostring(tostring_function)); end
+   if tostring_function==tostring then err("tostring_function cannot be the lua tostring function"); end
    for k,v in pairs(proto) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
-   local metatable = make_instance_metatable(parent, typename, proto)
+   local metatable = make_instance_metatable(parent, typename, proto, tostring_function)
    local proto_len = 0
    for k,v in pairs(proto) do proto_len = proto_len + 1; end
    local function creator(data)
@@ -262,7 +273,7 @@ local function object_factory(parent, typename, proto)
       -- N.B. data[ID] is set lazily, only if recordtype.id() is called
       return setmetatable(data, metatable)
    end -- function creator
-   return creator, metatable
+   return creator
 end
 
 -- All recordtypes, which are created by recordtype.new(...), have these keys:
@@ -274,6 +285,7 @@ local recordtype_prototype = {new = NIL,
 local root_prototype = {typename = NIL,
 			id = NIL,
 			parent = NIL,
+			tostring = NIL,
 			NIL = NIL,
 		        ABOUT = ABOUT }
 
@@ -285,16 +297,16 @@ local function copy(tbl)
    return new
 end
 
-local function new_recordtype(parent, typename, prototype, init_function)
+local function new_recordtype(parent, typename, prototype, init_function, tostring_function)
    if type(typename)~="string" then err("typename not a string: " .. tostring(typename)); end
    prototype = prototype or {}
    for k,v in pairs(prototype) do
       if type(k)~="string" then err("prototype key not a string: " .. tostring(k)); end
    end
    init_function = init_function or function(parent, ...) return parent.factory(...); end
+   tostring_function = tostring_function or instance_tostring
    local rt = parent.factory(copy(recordtype_prototype))
-   local metatable
-   rt.factory, metatable = object_factory(rt, typename, prototype)
+   rt.factory = object_factory(rt, typename, prototype, tostring_function)
    rt.is = make_is_instance_function(rt)
    rt.new = function(...) return init_function(rt, ...); end
    return rt
@@ -305,7 +317,7 @@ end
 
 local root					    -- the primordial object
 local root_typename = "recordtype root"		    -- to visually distinguish the root object
-local root_factory, root_metatable = object_factory(root, root_typename, root_prototype)
+local root_factory = object_factory(root, root_typename, root_prototype, instance_tostring)
 root = root_prototype				    -- factory converts prototype into object
 root.factory = root_factory
 
@@ -317,8 +329,8 @@ local root_mt = getmetatable(root)
 rawset(root_mt, "parent", root)
 
 -- The primordial object has a new() function that creates new record types
-function root.new(typename, prototype, init_function)
-   return new_recordtype(root, typename, prototype, init_function)
+function root.new(typename, prototype, init_function, tostring_function)
+   return new_recordtype(root, typename, prototype, init_function, tostring_function)
 end
 
 local function attribute_getter(attribute)
@@ -331,6 +343,7 @@ end
 root.typename = attribute_getter("typename")
 root.parent = attribute_getter("parent")
 root.is = make_is_instance_function(root)
+root.tostring = instance_tostring
 root.id = compute_id_string
 root.NIL = NIL
 
