@@ -183,25 +183,25 @@ assert (ls[1]=="root->left")
 assert (ls[2]=="root->left->right")
 assert (ls[3]=="the root node")
 
-bintree2 = recordtype.new("BinaryTree",
+bintree3 = recordtype.new("BinaryTree3",
 			  {value=NIL, left=NIL, right=NIL},
 			  function(val, l, r)
 			     -- validation of val, l, r can happen here
-			     return bintree2.factory{value=val, left=l, right=r}
+			     return bintree3.factory{value=val, left=l, right=r}
 			  end,
 			  function(self) 
 			     return recordtype.typename(self) .. "/" .. recordtype.id(self)
 			  end)
 
-new = bintree2.new
-b2 = new("Root",
+new = bintree3.new
+b3 = new("Root",
 	 new("Root->Left",
 	     nil,
 	     new("Root->Left->Right")))
 
-assert(tostring(b2):match("^BinaryTree/0x"))
-assert(recordtype.tostring(b2):match("^<BinaryTree: 0x"))
-ls = walk(b2)
+assert(tostring(b3):match("^BinaryTree3/0x"))
+assert(recordtype.tostring(b3):match("^<BinaryTree3: 0x"))
+ls = walk(b3)
 assert (ls[1]=="Root->Left")
 assert (ls[2]=="Root->Left->Right")
 assert (ls[3]=="Root")
