@@ -41,7 +41,7 @@ E.g.
     > b.value
     anonymous
     > b
-    <BinaryTree 0x7fd18542a3e0>
+    <BinaryTree: 0x7fd18542a3e0>
     > bintree.is(b)
     true
     > recordtype.is(bintree)
@@ -86,7 +86,7 @@ an optional template holding any desired non-default initial values.
 The regular Lua 'pairs' function will iterate over the fields of a record, e.g.
 			      
     > for k,v in pairs(b2) do print(k,v) end
-    left	<BinaryTree 0x7fd18541f240>
+    left	<BinaryTree: 0x7fd18541f240>
     value	Root
     > 
 
@@ -105,15 +105,15 @@ E.g.
     > recordtype.typename(recordtype)
     recordtype root
     > recordtype.parent(b)
-    <recordtype 0x7fd1854345d0>
+    <recordtype: 0x7fd1854345d0>
     > recordtype.parent(b) == bintree
     true
     > recordtype.parent(bintree)
-    <recordtype root 0x7fd185606270>
+    <recordtype root: 0x7fd185606270>
     > recordtype.parent(bintree) == recordtype
     true
     > recordtype.parent(recordtype)
-    <recordtype root 0x7fd185606270>
+    <recordtype root: 0x7fd185606270>
     > recordtype.parent(recordtype) == recordtype
     true
     >     
@@ -125,17 +125,18 @@ OBJECTIVES:
 key.  Such errors cause bugs to appear far from the site of the typo.
 
 (2) When debugging, a table looks like a table, e.g. "table: 0x7fb008603440".  It is useful to
-know unambiguously what this table is supposed to be, e.g. "<BinaryTree 0x7fd185431450>".
+know unambiguously what this table is supposed to be, e.g. "<BinaryTree: 0x7fd185431450>".
 
 (3) Using plain tables instead of records, it is easy to forget to initialize all the keys, or to
 miss a key due to a typo.  Records ensure this cannot happen.
 
 LIMITATIONS:
 
-* The Lua 'next' function will iterate over an entire object, exposing the internal
+* The Lua 'next' function will iterate over an entire object, exposing some of the internal
   representation. Use 'pairs'. 
 
-* As is commonly the case, using rawset and rawget will also break the abstraction.
+* As is commonly the case, using rawset, rawget, or accessing the metatable will also break the
+  abstraction. 
 
 
 --]]
@@ -170,10 +171,9 @@ local function err(str)
    error("recordtype: " .. str, 3)
 end
 
--- All instances derived from a parent have the same metatable
-local function make_is_instance_function(metatable)
-   assert(type(metatable)=="table")
-   return function(obj) return (getmetatable(obj)==metatable); end
+local function make_is_instance_function(parent)
+   assert(type(parent)=="table")
+   return function(obj) return recordtype.parent(obj)==parent; end
 end
 
 local function index(self, key)
@@ -193,9 +193,12 @@ end
 local ID = {}					    -- index of object unique id
 
 local function compute_id_string(self)
-   if type(self)~="table" then return nil; end
+   if not recordtype.parent(self) then return nil; end
    local id_object = rawget(self, ID)
-   if not id_object then return nil; end
+   if not id_object then
+      id_object = {}				 -- lazy creation of a unique object (a new table)
+      rawset(self, ID, id_object)
+   end
    return tostring(id_object):match("(0x%x+)") or "id/error"
 end
 
@@ -209,10 +212,6 @@ end
 -- value to an actual stored nil.
 
 local NIL = setmetatable({}, {__tostring = function (self) return("<recordtype NIL>"); end; })
-
-local root = {}					    -- the primordial object
-local root_id = 0
-local root_typename = "recordtype root"		    -- to visually distinguish the root object
 
 local function field_next(self, optional_key)
    local key = optional_key
@@ -260,7 +259,7 @@ local function object_factory(parent, typename, proto)
 	 end
       end
       if nils then for _,k in ipairs(nils) do rawset(data, k, nil); end; end
-      data[ID] = {}				    -- a unique object
+      -- N.B. data[ID] is set lazily, only if recordtype.id() is called
       return setmetatable(data, metatable)
    end -- function creator
    return creator, metatable
@@ -296,7 +295,7 @@ local function new_recordtype(parent, typename, prototype, init_function)
    local rt = parent.factory(copy(recordtype_prototype))
    local metatable
    rt.factory, metatable = object_factory(rt, typename, prototype)
-   rt.is = make_is_instance_function(metatable)
+   rt.is = make_is_instance_function(rt)
    rt.new = function(...) return init_function(rt, ...); end
    return rt
 end
@@ -304,19 +303,18 @@ end
 -- The primordial object has itself as a parent.  Consequently, it is awkward to create.  However,
 -- we only have to do this once.
 
---rawset(root, ID, root_id)		    -- needed for parent() to work
+local root					    -- the primordial object
+local root_typename = "recordtype root"		    -- to visually distinguish the root object
 local root_factory, root_metatable = object_factory(root, root_typename, root_prototype)
-root = {factory = root_factory}
---setmetatable(root, {typename = root_typename, next_id=1000})
+root = root_prototype				    -- factory converts prototype into object
+root.factory = root_factory
 
 local rp2 = {}
-for k,v in pairs(root_prototype) do if k~=ID then rp2[k]=v; end; end
+for k,v in pairs(root_prototype) do if k~=ID and k~="ABOUT" then rp2[k]=v; end; end
 root = new_recordtype(root, "recordtype", rp2)
---root[ID] = root_id
---setmetatable(root, root_metatable) -- make recordtype.is(recordtype) be true
 
---rawset(root, ID, root_id)		    -- yes, this needs to be set again
---rawset(root, PARENT, root)
+local root_mt = getmetatable(root)
+rawset(root_mt, "parent", root)
 
 -- The primordial object has a new() function that creates new record types
 function root.new(typename, prototype, init_function)
@@ -325,15 +323,14 @@ end
 
 local function attribute_getter(attribute)
    return function(obj)
-	     if type(obj)=="table" then
-		local mt = getmetatable(obj)
-		if mt then return mt[attribute]; end
-	     end
+	     local mt = getmetatable(obj)
+	     if mt then return mt[attribute]; end
 	  end
 end
 
 root.typename = attribute_getter("typename")
 root.parent = attribute_getter("parent")
+root.is = make_is_instance_function(root)
 root.id = compute_id_string
 root.NIL = NIL
 
@@ -344,7 +341,7 @@ return root
 -- To do:
 
 -- Maybe keep a list of defined type names, and print a warning when redefining an existing type
--- name.  This can happen during development and it is not easily observed.
+-- name.  This can happen during development and it is not obvious when it happens.
 
 -- Consider supporting a weak population of instances for each type.
 

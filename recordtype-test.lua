@@ -6,6 +6,8 @@
 
 recordtype = require("recordtype")
 
+assert (recordtype.is(recordtype))
+
 -- These are applicable to all objects made by recordtype:
 assert (recordtype.typename and type(recordtype.typename)=="function")
 assert (recordtype.id and type(recordtype.id)=="function")
@@ -20,6 +22,7 @@ function object_test(obj)
    assert (recordtype.id(obj))
    assert (recordtype.parent(obj))
    assert (type(recordtype.id(obj))=="string")
+   assert (tostring(obj):match(recordtype.id(obj)))
    assert (tonumber(recordtype.id(obj):match("(0x%x+)")))
 end
 
