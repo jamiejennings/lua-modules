@@ -84,6 +84,7 @@ end
 function test.start(optional_filename, optional_msg)
    setup()
    test_filename = optional_filename or test.current_filename()
+   io.write("Entering ", test_filename, "\n");
    if optional_msg then io.write(optional_msg, "\n"); end
 end
 
