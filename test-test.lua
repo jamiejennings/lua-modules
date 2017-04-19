@@ -13,7 +13,7 @@
 -- > dofile "test-test.lua"
 
 expected_output_with_color = [[
-Entering @./test.lua
+Entering @test-test.lua
 This is an optional message for the start of testing.
 
 First, some tests that we expect to pass ..
@@ -23,7 +23,7 @@ Tests expected to fail [31mX[39m[31mX[39m
 ** 2 tests failed:
 [31mtest-test.lua:68 Tests expected to fail: : False means the test failed
 [39m[31mtest-test.lua:69 Tests expected to fail: : Module 'test' not a function (which is the right answer)
-[39m@./test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
+[39m@test-test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
 ]]
 
 expected_output_without_color = [[
@@ -36,7 +36,7 @@ Tests expected to fail XX
 ** 2 tests failed:
 test-test.lua:68 Tests expected to fail: : False means the test failed
 test-test.lua:69 Tests expected to fail: : Module 'test' not a function (which is the right answer)
-@./test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
+@test-test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
 ]]
 
 expected_output = nil

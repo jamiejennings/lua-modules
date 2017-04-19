@@ -67,6 +67,10 @@ function test.current_filename()
    return (debug.getinfo(1).source)
 end
 
+local function caller_filename()
+   return (debug.getinfo(3).source)
+end
+
 local test_filename, count, fail_count, heading_count, subheading_count, messages
 local current_heading, current_subheading
 
@@ -83,7 +87,7 @@ end
 
 function test.start(optional_filename, optional_msg)
    setup()
-   test_filename = optional_filename or test.current_filename()
+   test_filename = optional_filename or caller_filename()
    io.write("Entering ", test_filename, "\n");
    if optional_msg then io.write(optional_msg, "\n"); end
 end
