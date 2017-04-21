@@ -170,11 +170,13 @@ LIMITATIONS:
 
 --]]
 
+local table = require("table")
+local string = require("string")
+
 ---------------------------------------------------------------------------------------------------
 -- Cache globals for code that might run under sandboxing 
 --
 local assert= assert
-local string= string
 local pairs= assert( pairs )
 local error= assert( error )
 local getmetatable= assert( getmetatable )
