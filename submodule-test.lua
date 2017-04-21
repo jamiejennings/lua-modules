@@ -95,9 +95,9 @@ package.loaded.termcolor = nil
 
 -- The submodule 'import' function is inserted into new modules.  The p1 module has no import
 -- paths, though, so 'import' cannot find "termcolor".
-ok, tc, msg = pcall(m.eval, 'return import("termcolor")', p1)
-assert(ok)
-assert(tc==nil and msg:find("not found"))
+ok, msg = pcall(m.eval, 'return import("termcolor")', p1)
+assert(not ok)
+assert(msg:find("not found"))
 
 require("termcolor")
 assert(package.loaded.termcolor)
@@ -133,8 +133,9 @@ f:close()
 os.execute("rm -f /tmp/mod4p2.luac")
 
 p2 = m.new("p2", "/tmp")			    -- only luac path given
-ok, result = m.import("mod4p2", p2)
-assert(not ok)					    -- mod4p2.luac is empty
+ok, msg = pcall(m.import, "mod4p2", p2)
+assert(not ok)					    -- mod4p2.luac is missing
+assert(msg:find("not found"))
 
 p3 = m.new("p3", nil, "/tmp")
 ok, result = m.import("mod4p2", p3)
@@ -153,15 +154,15 @@ assert(p2.env.package.loaded.mod4p2[1]=="hello")
 p4 = m.new("p4", nil, nil, "/tmp")
 os.execute("cp /usr/local/lib/lua/5.3/lpeg.so /tmp/")
 
-ok = m.import("lpeg", p1)		    -- p1 has no import paths configured
+ok = pcall(m.import, "lpeg", p1)		    -- p1 has no import paths configured
 assert(not ok)
-ok = m.import("lpeg", p2)		    -- p2 has no ".so" path
+ok = pcall(m.import, "lpeg", p2)		    -- p2 has no ".so" path
 assert(not ok)
-ok = m.import("lpeg", p3)		    -- p3 has no ".so" path
+ok = pcall(m.import, "lpeg", p3)		    -- p3 has no ".so" path
 assert(not ok)
 
 -- This will work
-result = m.import("lpeg", p4)		    -- p4 has ".so" path configured
+result = m.import("lpeg", p4)			    -- p4 has ".so" path configured
 assert(result)
 assert(type(result)=="table")			    -- import returns the package, like require
 assert(type(p4.env.package.loaded.lpeg)=="table")

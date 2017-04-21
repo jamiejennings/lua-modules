@@ -32,25 +32,37 @@ local prefix_pattern = "([^;]+)"
 
 local function load_bt(name, env, _, mtype, path, ext)
    -- print("In load_bt: ", name, mtype, path, ext)
+   local attempts = {}
    local next_prefix = path:gmatch(prefix_pattern)
    for prefix in next_prefix do
-      local thing = loadfile(prefix .. "/" .. name .. ext, mtype, env)
+      local fullname = prefix .. "/" .. name .. ext
+      local thing = loadfile(fullname, mtype, env)
       if thing then return thing; end
+      table.insert(attempts, fullname)
    end
+   return nil, table.concat(attempts, "\n")
 end
 
 local function load_so(name, env, _, mtype, path, ext)
+   local attempts = {}
    local next_prefix = path:gmatch(prefix_pattern)
    for prefix in next_prefix do
-      local thing = loadlib(prefix .. "/" .. name .. ext, "luaopen_" .. name)
+      local fullname = prefix .. "/" .. name .. ext
+      local thing = loadlib(fullname, "luaopen_" .. name)
       if thing then return thing; end
+      table.insert(attempts, fullname)
    end
+   return nil, table.concat(attempts, "\n")
 end
 
 -- To disable an entry, either remove it or set its path to nil
 local default_try_table = {
-   {type="local", path=true, ext=nil, load=function(name, env) return env.package.loaded[name]; end},
-   {type="parent", path=true, ext=nil, load=function(name, env, parent_env) return parent_env.package.loaded[name]; end},
+   {type="local", path=true, ext=nil, load=function(name, env)
+					      return env.package.loaded[name], "package.loaded";
+					   end},
+   {type="parent", path=true, ext=nil, load=function(name, env, parent_env)
+					       return parent_env.package.loaded[name], "parent->package.loaded";
+					    end},
    {type="b", path="luac_path", ext=".luac", load=load_bt},
    {type="t", path="lua_path", ext=".lua", load=load_bt},
    {type="so", path="so_path", ext=".so", load=load_so}
@@ -70,18 +82,20 @@ function m.current_module()
 end
 
 local function search(name, in_module)
-   local thing, msg
+   local thing, attempts
+   local paths_attempted = ""
    local env = in_module and in_module.env or _ENV
    local parent_env = in_module.parent_env
    for i, try in ipairs(in_module.try) do
       -- print("search:", i, try.path, try.type, try.ext, try.load)
       if try.path then
-	 thing, msg = try.load(name, env, parent_env, try.type, try.path, try.ext)
+	 thing, attempts = try.load(name, env, parent_env, try.type, try.path, try.ext)
 	 if type(thing)=="table" then return thing;
 	 elseif type(thing)=="function" then return thing(); end
+      paths_attempted = paths_attempted .. "\n" .. attempts
       end
    end
-   return nil, "not found"
+   return nil, paths_attempted
 end
 
 local function make_importer(default_module)
@@ -89,7 +103,7 @@ local function make_importer(default_module)
 	     in_module = in_module or default_module
 	     if not in_module then error("can only import into a module"); end
 	     local module, msg = search(name, in_module)
-	     if not module then return nil, msg; end
+	     if not module then error("module '" .. name .. "' not found in:" .. msg, 2); end
 	     assert(type(module)=="table")
 	     in_module.env.package.loaded[name] = module
 	     return module
