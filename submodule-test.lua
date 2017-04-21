@@ -175,6 +175,15 @@ assert(not p1_1.env.package.loaded.lpeg)
 assert(not p3.env.package.loaded.lpeg)
 assert(not p3.env.package.loaded.lpeg)
 
+-- Check that the configuration can be a path, not just a single prefix
+p5 = m.new("p5", nil, "foo;/tmp/foobar;/tmp", nil)
+ok, result = m.import("mod4p2", p5)		    -- /tmp/mod4p2.luac exists
+assert(ok)
+assert(type(p5.env.package.loaded.mod4p2)=="table")
+assert(p5.env.package.loaded.mod4p2[1]=="hello")
+
+
+
 -- We can import stuff from a submodule, which may be useful for debugging or during an
 -- interactive Lua programming session
 

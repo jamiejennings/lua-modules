@@ -28,22 +28,32 @@ local load = _G.load
 local copy_of_G = {}
 for k,v in pairs(_G) do if type(v)~="table" then copy_of_G[k]=v; end; end
 
-local function load_bt(name, env, _, mtype, prefix, ext)
-   print("In load_bt: ", name, mtype, prefix, ext)
-   return loadfile(prefix .. "/" .. name .. ext, mtype, env)
+local prefix_pattern = "([^;]+)"
+
+local function load_bt(name, env, _, mtype, path, ext)
+   -- print("In load_bt: ", name, mtype, path, ext)
+   local next_prefix = path:gmatch(prefix_pattern)
+   for prefix in next_prefix do
+      local thing = loadfile(prefix .. "/" .. name .. ext, mtype, env)
+      if thing then return thing; end
+   end
 end
 
-local function load_so(name, env, _, mtype, prefix, ext)
-   return loadlib(prefix .. "/" .. name .. ext, "luaopen_" .. name)
+local function load_so(name, env, _, mtype, path, ext)
+   local next_prefix = path:gmatch(prefix_pattern)
+   for prefix in next_prefix do
+      local thing = loadlib(prefix .. "/" .. name .. ext, "luaopen_" .. name)
+      if thing then return thing; end
+   end
 end
 
--- To disable an entry, either remove it or set its prefix to nil
+-- To disable an entry, either remove it or set its path to nil
 local default_try_table = {
-   {type="local", prefix=true, ext=nil, load=function(name, env) return env.package.loaded[name]; end},
-   {type="parent", prefix=true, ext=nil, load=function(name, env, parent_env) return parent_env.package.loaded[name]; end},
-   {type="b", prefix="luac_prefix", ext=".luac", load=load_bt},
-   {type="t", prefix="lua_prefix", ext=".lua", load=load_bt},
-   {type="so", prefix="so_prefix", ext=".so", load=load_so}
+   {type="local", path=true, ext=nil, load=function(name, env) return env.package.loaded[name]; end},
+   {type="parent", path=true, ext=nil, load=function(name, env, parent_env) return parent_env.package.loaded[name]; end},
+   {type="b", path="luac_path", ext=".luac", load=load_bt},
+   {type="t", path="lua_path", ext=".lua", load=load_bt},
+   {type="so", path="so_path", ext=".so", load=load_so}
 }
 	      
 local function copy(t)
@@ -64,9 +74,9 @@ local function search(name, in_module)
    local env = in_module and in_module.env or _ENV
    local parent_env = in_module.parent_env
    for i, try in ipairs(in_module.try) do
-      print("search:", i, try.prefix, try.type, try.ext, try.load)
-      if try.prefix then
-	 thing, msg = try.load(name, env, parent_env, try.type, try.prefix, try.ext)
+      -- print("search:", i, try.path, try.type, try.ext, try.load)
+      if try.path then
+	 thing, msg = try.load(name, env, parent_env, try.type, try.path, try.ext)
 	 if type(thing)=="table" then return thing;
 	 elseif type(thing)=="function" then return thing(); end
       end
@@ -125,16 +135,16 @@ local function empty_module(name)
 		       {__tostring=function() return "<module " .. tostring(name) .. ">"; end})
 end
 
-function m.new(name, luac_prefix, lua_prefix, so_prefix)
+function m.new(name, luac_path, lua_path, so_path)
    local parent_env = _ENV
    local module = empty_module(name)
    local env = initial_environment(module)
    local try_table = {}
    for i,try in ipairs(default_try_table) do
       try_table[i] = copy(try)
-      if try_table[i].prefix=="luac_prefix" then try_table[i].prefix=luac_prefix;
-      elseif try_table[i].prefix=="lua_prefix" then try_table[i].prefix=lua_prefix;
-      elseif try_table[i].prefix=="so_prefix" then try_table[i].prefix=so_prefix;
+      if try_table[i].path=="luac_path" then try_table[i].path=luac_path;
+      elseif try_table[i].path=="lua_path" then try_table[i].path=lua_path;
+      elseif try_table[i].path=="so_path" then try_table[i].path=so_path;
       end
    end
    env.current_module = function() return module; end
