@@ -91,7 +91,7 @@ function m.current_module()
 end
 
 local function search(name, in_module)
-   local thing, attempts, fullname
+   local thing, attempts
    local paths_attempted = ""
    local env = in_module and in_module.env or _ENV
    local parent_env = in_module.parent_env
@@ -99,20 +99,20 @@ local function search(name, in_module)
       -- print("search:", i, try.path, try.load)
       if try.path then
 	 thing, attempts = try.load(in_module.root, try.path, name, env, parent_env)
-	 if type(thing)=="table" then return thing;
-	 elseif type(thing)=="function" then return thing(); end
+	 if type(thing)=="table" then return true, thing;
+	 elseif type(thing)=="function" then return true, thing(); end
       paths_attempted = paths_attempted .. "\n" .. attempts
       end
    end
-   return nil, paths_attempted
+   return nil, nil, paths_attempted
 end
 
 local function make_importer(default_module)
    return function(name, in_module)
 	     in_module = in_module or default_module
 	     if not in_module then error("can only import into a module"); end
-	     local module, msg = search(name, in_module)
-	     if not module then error("module '" .. name .. "' not found in:" .. msg, 2); end
+	     local found, module, msg = search(name, in_module)
+	     if not found then error("module '" .. name .. "' not found in:" .. msg, 2); end
 	     in_module.env.package.loaded[name] = module
 	     return module
 	  end
