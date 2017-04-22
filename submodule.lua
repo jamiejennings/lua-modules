@@ -38,28 +38,28 @@ local function make_path_searcher(loader, mtype, ext)
 	     for prefix in next_prefix do
 		local fullname = prefix .. "/" .. name .. ext
 		if fullname:sub(1,1)~="/" then fullname = root .. "/" .. fullname; end
-		local thing = loader(fullname, name, env)
+		local thing, msg = loader(fullname, name, env)
 		if thing then return thing; end
-		table.insert(attempts, fullname)
+		table.insert(attempts, msg)
 	     end
 	     return nil, table.concat(attempts, "\n")
 	  end
 end
 
 load_b = make_path_searcher(function(fullname, name, env)
-			       return loadfile(fullname, "b", env)
+			       return loadfile(fullname, "b", env), fullname
 			    end,
 			    "b",
 			    ".luac")
 
 load_t = make_path_searcher(function(fullname, name, env)
-			       return loadfile(fullname, "t", env)
+			       return loadfile(fullname, "t", env), fullname
 			    end,
 			    "t",
 			    ".lua")
 
 load_so = make_path_searcher(function(fullname, name, env)
-			       return loadlib(fullname, "luaopen_" .. name)
+			       return loadlib(fullname, "luaopen_" .. name), fullname
 			    end,
 			    "so",
 			    ".so")
