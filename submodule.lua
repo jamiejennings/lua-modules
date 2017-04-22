@@ -27,6 +27,8 @@ local load = _G.load
 
 local copy_of_G = {}
 for k,v in pairs(_G) do if type(v)~="table" then copy_of_G[k]=v; end; end
+copy_of_G._G = copy_of_G
+copy_of_G.arg = _G.arg			    -- for things like argparse
 
 local function make_path_searcher(loader, mtype, ext)
    local prefix_pattern = "([^;]+)"

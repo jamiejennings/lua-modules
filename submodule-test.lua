@@ -201,9 +201,14 @@ ok, msg = pcall(m.import, "mod4p2", pzz)
 assert(ok)
 
 
-
-
-
+-- Check that _G and arg are defined
+pzz_G = m.eval("return _G", pzz)
+assert(pzz_G)
+pzz_arg = m.eval("return arg", pzz)
+assert(pzz_arg)
+pzz_G_arg = m.eval("return _G.arg", pzz)
+assert(pzz_G_arg)
+assert(pzz_arg==pzz_G_arg)
 
 -- We can import stuff from a submodule, which may be useful for debugging or during an
 -- interactive Lua programming session
