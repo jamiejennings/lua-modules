@@ -132,12 +132,12 @@ f:close()
 -- Reset, to clean up from prior tests
 os.execute("rm -f /tmp/mod4p2.luac")
 
-p2 = m.new("p2", "/tmp")			    -- only luac path given
+p2 = m.new("p2", "/", "/tmp")			    -- only luac path given
 ok, msg = pcall(m.import, "mod4p2", p2)
 assert(not ok)					    -- mod4p2.luac is missing
 assert(msg:find("not found"))
 
-p3 = m.new("p3", nil, "/tmp")
+p3 = m.new("p3", "/", nil, "/tmp")
 ok, result = m.import("mod4p2", p3)
 assert(ok)
 assert(not result)
@@ -151,7 +151,7 @@ assert(ok)
 assert(type(p2.env.package.loaded.mod4p2)=="table")
 assert(p2.env.package.loaded.mod4p2[1]=="hello")
 
-p4 = m.new("p4", nil, nil, "/tmp")
+p4 = m.new("p4", "/", nil, nil, "/tmp")
 os.execute("cp /usr/local/lib/lua/5.3/lpeg.so /tmp/")
 
 ok = pcall(m.import, "lpeg", p1)		    -- p1 has no import paths configured
@@ -177,11 +177,31 @@ assert(not p3.env.package.loaded.lpeg)
 assert(not p3.env.package.loaded.lpeg)
 
 -- Check that the configuration can be a path, not just a single prefix
-p5 = m.new("p5", nil, "foo;/tmp/foobar;/tmp", nil)
+p5 = m.new("p5", "/", nil, "foo;/tmp/foobar;/tmp", nil)
 ok, result = m.import("mod4p2", p5)		    -- /tmp/mod4p2.luac exists
 assert(ok)
 assert(type(p5.env.package.loaded.mod4p2)=="table")
 assert(p5.env.package.loaded.mod4p2[1]=="hello")
+
+-- Check the new root_path configuration option
+px = m.new("px", "/", nil, "tmp")			    -- only lua path given
+ok, msg = pcall(m.import, "mod4p2", px)
+assert(ok)
+
+py = m.new("py", "", nil, "/tmp")			    -- empty string for root path
+ok, msg = pcall(m.import, "mod4p2", py)
+assert(ok)
+
+pz = m.new("pz", nil, nil, "/tmp")			    -- nil for root path
+ok, msg = pcall(m.import, "mod4p2", pz)
+assert(ok)
+
+pzz = m.new("pz", "adsklasdk asdlka d", nil, "/tmp")	    -- root path not used
+ok, msg = pcall(m.import, "mod4p2", pzz)
+assert(ok)
+
+
+
 
 
 

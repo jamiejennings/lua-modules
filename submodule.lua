@@ -28,44 +28,51 @@ local load = _G.load
 local copy_of_G = {}
 for k,v in pairs(_G) do if type(v)~="table" then copy_of_G[k]=v; end; end
 
-local prefix_pattern = "([^;]+)"
-
-local function load_bt(name, env, _, mtype, path, ext)
-   -- print("In load_bt: ", name, mtype, path, ext)
-   local attempts = {}
-   local next_prefix = path:gmatch(prefix_pattern)
-   for prefix in next_prefix do
-      local fullname = prefix .. "/" .. name .. ext
-      local thing = loadfile(fullname, mtype, env)
-      if thing then return thing; end
-      table.insert(attempts, fullname)
-   end
-   return nil, table.concat(attempts, "\n")
+local function make_path_searcher(loader, mtype, ext)
+   local prefix_pattern = "([^;]+)"
+   return function(root, path, name, env)
+	     local attempts = {}
+	     local next_prefix = path:gmatch(prefix_pattern)
+	     for prefix in next_prefix do
+		local fullname = prefix .. "/" .. name .. ext
+		if fullname:sub(1,1)~="/" then fullname = root .. "/" .. fullname; end
+		local thing = loader(fullname, name, env)
+		if thing then return thing; end
+		table.insert(attempts, fullname)
+	     end
+	     return nil, table.concat(attempts, "\n")
+	  end
 end
 
-local function load_so(name, env, _, mtype, path, ext)
-   local attempts = {}
-   local next_prefix = path:gmatch(prefix_pattern)
-   for prefix in next_prefix do
-      local fullname = prefix .. "/" .. name .. ext
-      local thing = loadlib(fullname, "luaopen_" .. name)
-      if thing then return thing; end
-      table.insert(attempts, fullname)
-   end
-   return nil, table.concat(attempts, "\n")
-end
+load_b = make_path_searcher(function(fullname, name, env)
+			       return loadfile(fullname, "b", env)
+			    end,
+			    "b",
+			    ".luac")
+
+load_t = make_path_searcher(function(fullname, name, env)
+			       return loadfile(fullname, "t", env)
+			    end,
+			    "t",
+			    ".lua")
+
+load_so = make_path_searcher(function(fullname, name, env)
+			       return loadlib(fullname, "luaopen_" .. name)
+			    end,
+			    "so",
+			    ".so")
 
 -- To disable an entry, either remove it or set its path to nil
 local default_try_table = {
-   {type="local", path=true, ext=nil, load=function(name, env)
-					      return env.package.loaded[name], "package.loaded";
-					   end},
-   {type="parent", path=true, ext=nil, load=function(name, env, parent_env)
-					       return parent_env.package.loaded[name], "parent->package.loaded";
-					    end},
-   {type="b", path="luac_path", ext=".luac", load=load_bt},
-   {type="t", path="lua_path", ext=".lua", load=load_bt},
-   {type="so", path="so_path", ext=".so", load=load_so}
+   {path=true, load=function(root, path, name, env)
+		       return env.package.loaded[name], "package.loaded";
+		    end},
+   {path=true, load=function(root, path, name, env, parent_env)
+		       return parent_env.package.loaded[name], "parent->package.loaded";
+		    end},
+   {path="luac_path", load=load_b},
+   {path="lua_path", load=load_t},
+   {path="so_path", load=load_so}
 }
 	      
 local function copy(t)
@@ -82,14 +89,14 @@ function m.current_module()
 end
 
 local function search(name, in_module)
-   local thing, attempts
+   local thing, attempts, fullname
    local paths_attempted = ""
    local env = in_module and in_module.env or _ENV
    local parent_env = in_module.parent_env
    for i, try in ipairs(in_module.try) do
-      -- print("search:", i, try.path, try.type, try.ext, try.load)
+      -- print("search:", i, try.path, try.load)
       if try.path then
-	 thing, attempts = try.load(name, env, parent_env, try.type, try.path, try.ext)
+	 thing, attempts = try.load(in_module.root, try.path, name, env, parent_env)
 	 if type(thing)=="table" then return thing;
 	 elseif type(thing)=="function" then return thing(); end
       paths_attempted = paths_attempted .. "\n" .. attempts
@@ -149,7 +156,8 @@ local function empty_module(name)
 		       {__tostring=function() return "<module " .. tostring(name) .. ">"; end})
 end
 
-function m.new(name, luac_path, lua_path, so_path)
+function m.new(name, root_path, luac_path, lua_path, so_path)
+   root_path = root_path or ""
    local parent_env = _ENV
    local module = empty_module(name)
    local env = initial_environment(module)
@@ -166,6 +174,7 @@ function m.new(name, luac_path, lua_path, so_path)
    module.env = env
    module.parent_env = parent_env
    module.try = try_table
+   module.root = root_path
    return module
 end
 
