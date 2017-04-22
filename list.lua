@@ -14,6 +14,8 @@
 --   The cdr implementation conses (sigh).
 --   An eq function on lists isn't possible, because eq(cdr(ls), cdr(ls)) ==> false.
 
+local table = require "table"
+
 local list = {}
 
 local list_metatable = {}
