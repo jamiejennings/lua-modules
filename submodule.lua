@@ -113,7 +113,6 @@ local function make_importer(default_module)
 	     if not in_module then error("can only import into a module"); end
 	     local module, msg = search(name, in_module)
 	     if not module then error("module '" .. name .. "' not found in:" .. msg, 2); end
-	     assert(type(module)=="table")
 	     in_module.env.package.loaded[name] = module
 	     return module
 	  end
