@@ -35,6 +35,7 @@
 -- ---------------------------------------------------------------------------------------------------
 
 local debug = require "debug"
+local io = require "io"
 
 local ok, tc = pcall(require, "termcolor")
 if not ok then
@@ -157,7 +158,7 @@ end
 test.results = {}
 
 function test.dofile(fn)
-   local doer, err = loadfile(fn, "t", _ENV)
+   local doer, err = loadfile(fn)
    if not doer then error("test: error loading test file: " .. tostring(err)); end
    table.insert(test.results, {fn, doer()})
 end		   
