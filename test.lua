@@ -65,7 +65,7 @@ end
 test = {}
 
 function test.current_filename()
-   return (debug.getinfo(1).source)
+   return (debug.getinfo(2).source)
 end
 
 local function caller_filename()
