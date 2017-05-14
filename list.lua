@@ -40,17 +40,21 @@ function list.length(obj)
    error("arg not a list: " .. tostring(obj))
 end
 
-function list.validate_structure(obj)
+-- an object is list.like iff it is a table with values at consecutive positive numeric indices
+-- starting with 1.
+function list.like(obj)
    if (type(obj)~="table") then return false, "arg not a table"; end
-   local len = 0
+   local min, max = 1, 0
    -- Only numeric indices in our lists
    for k,v in pairs(obj) do
       if type(k)~="number" then return false, "non-numeric index: " .. tostring(k); end
-      len = (k > len) and k or len
+      max = (k > max) and k or max
+      min = (k < min) and k or min
    end
+   if (min < 1) then return false, "negative or zero indices such as " .. tostring(k); end
    -- No gaps in the numbers
-   for i=1,len do
-      if not obj[i] then return false, "gap in indices at " .. tostring(i); end
+   for i=1,max do
+      if obj[i]==nil then return false, "gap in indices at " .. tostring(i); end
    end
    return true
 end
@@ -138,7 +142,7 @@ function list.apply(fn, ls)
    return fn(table.unpack(ls))
 end
 
-function list.apply_at_i(fn, i, ...)
+local function apply_at_i(fn, i, ...)
    assert(type(i)=="number")
    local args = list.new()
    local lists = {...}
@@ -152,7 +156,7 @@ end
 function list.map(fn, ls1, ...)
    local results = list.new()
    for i=1,#ls1 do
-      results[i] = list.apply_at_i(fn, i, ls1, ...)
+      results[i] = apply_at_i(fn, i, ls1, ...)
    end
    return results
 end
@@ -164,7 +168,7 @@ function list.filter(fn, ls1, ...)
    local results = list.new()
    local out_index = 1
    for i=1,#ls1 do
-      local temp = list.apply_at_i(fn, i, ls1, ...)
+      local temp = apply_at_i(fn, i, ls1, ...)
       if temp then
 	 results[out_index] = ls1[i]
 	 out_index = out_index + 1
@@ -175,7 +179,7 @@ end
 
 function list.foreach(fn, ls1, ...)
    for i=1,#ls1 do
-      list.apply_at_i(fn, i, ls1, ...)
+      apply_at_i(fn, i, ls1, ...)
    end
 end
 

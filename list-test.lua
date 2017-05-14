@@ -1,8 +1,7 @@
 list = require("list")
 
--- Not testing: 2
---   apply_at_i
---   validate_structure
+-- Not testing: 1
+--   apply_at_i (not exported)
 
 -- 5
 new, from, is = list.new, list.from, list.is
@@ -325,5 +324,15 @@ assert(ts(primes)=="{2, 3, 5, 7}")
 assert(ts(cons(true, primes))=="{true, 2, 3, 5, 7}")
 assert(ts(new(print))=="{"..tostring(print).."}")
 
+ts = list.like
+assert(list.like{})
+assert(list.like{"a"})
+assert(list.like{"a", "b"})
+assert(list.like{"a", "b", false, 5, print, "e"})
+assert(not list.like{a=67})			    -- non-numeric index
+assert(not list.like{nil, "a"})			    -- non-consecutive indices
+assert(not list.like{[0]="a"})			    -- zero index
+assert(not list.like{[-1]="a"})			    -- negative index
+assert(not list.like{[-1]="a", "b"})		    -- negative index
 
 print("Done")
