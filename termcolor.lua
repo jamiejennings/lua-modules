@@ -3,7 +3,7 @@
 ---- termcolor.lua    Write text in color using ANSI escape sequences
 ----                  Reference: https://en.wikipedia.org/wiki/ANSI_escape_code
 ----
----- © Copyright IBM Corporation 2016, 2017.
+---- © Copyright Jamie A. Jennings 2016, 2017.
 ---- LICENSE: MIT License (https://opensource.org/licenses/mit-license.html)
 ---- AUTHOR: Jamie A. Jennings
 

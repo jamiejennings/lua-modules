@@ -2,7 +2,7 @@
 ----
 ---- list.lua     Some list functions, where lists are based on Lua tables
 ----
----- © Copyright IBM Corporation 2016, 2017.
+---- © Copyright Jamie A. Jennings 2016, 2017.
 ---- LICENSE: MIT License (https://opensource.org/licenses/mit-license.html)
 ---- AUTHOR: Jamie A. Jennings
 

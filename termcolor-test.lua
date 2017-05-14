@@ -2,7 +2,7 @@
 --
 -- termcolor-test.lua
 --
--- © Copyright IBM Corporation 2017.
+-- © Copyright Jamie A. Jennings 2017.
 -- LICENSE: MIT License (https://opensource.org/licenses/mit-license.html)
 -- AUTHOR: Jamie A. Jennings
 
