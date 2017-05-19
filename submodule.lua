@@ -38,7 +38,16 @@ local function make_path_searcher(loader, mtype, ext)
 		local fullname = prefix .. "/" .. name .. ext
 		if fullname:sub(1,1)~="/" then fullname = root .. "/" .. fullname; end
 		local thing, msg = loader(fullname, name, env)
-		if thing then return thing; end
+		if thing then return thing;
+		else
+		   -- if file exists and load failed, then error occurred while compiling.
+		   -- otherwise, non-existant file means "keep searching".
+		   local f = io.open(fullname, "r")
+		   if f then
+		      f:close()
+		      error(msg)		    -- must have been a syntax error
+		   end
+		end
 		table.insert(attempts, msg)
 	     end
 	     return nil, table.concat(attempts, "\n")
@@ -111,7 +120,10 @@ local function make_importer(default_module)
 	     in_module = in_module or default_module
 	     if not in_module then error("can only import into a module"); end
 	     local found, module, msg = search(name, in_module)
-	     if not found then error("module '" .. name .. "' not found in:" .. msg, 2); end
+	     if not found then
+		error("in " .. tostring(in_module) ..
+		   ", module '" .. name .. "' not found:" .. msg, 2)
+	     end
 	     in_module.env.package.loaded[name] = module
 	     return module
 	  end
@@ -131,7 +143,12 @@ local function make_require(in_module)
    return function(name)
 	     local loaded = in_module.env.package.loaded[name]
 	     if loaded then return loaded
-	     else return require(name)
+	     else
+		local ok, thing = pcall(require, name)
+		if not ok then
+		   error("submodule: in " .. tostring(in_module) .. ", " .. thing, 2)
+		end
+		return thing
 	     end
 	  end
 end
