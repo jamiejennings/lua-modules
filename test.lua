@@ -138,7 +138,7 @@ local function summarize(label, count, fail_count)
       green_write("** All tests passed.\n")
    else
       io.write(total)
-      io.write("** ", tostring(fail_count), " tests failed:\n")
+      io.write("** ", tostring(fail_count), " tests failed\n")
    end
 end
 
