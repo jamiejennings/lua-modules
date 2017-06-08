@@ -20,10 +20,13 @@
 
 local m = {}
 
-local _G = _G
-local loadlib = package.loadlib
-local loadfile = _G.loadfile
-local load = _G.load
+package = require "package"
+io = require "io"
+
+local _G = assert(_G)
+local loadlib = assert(package.loadlib)
+local loadfile = assert(_G.loadfile)
+local load = assert(_G.load)
 
 local copy_of_G = {}
 for k,v in pairs(_G) do if k~="_G" then copy_of_G[k]=v; end; end
@@ -37,37 +40,39 @@ local function make_path_searcher(loader, mtype, ext)
 	     for prefix in next_prefix do
 		local fullname = prefix .. "/" .. name .. ext
 		if fullname:sub(1,1)~="/" then fullname = root .. "/" .. fullname; end
-		local path, thing, msg = loader(fullname, name, env)
-		if thing then return path, thing;
-		else
-		   -- if file exists and load failed, then error occurred while compiling.
-		   -- otherwise, non-existant file means "keep searching".
-		   local f = io.open(fullname, "r")
-		   if f then
-		      f:close()
-		      error("submodule: error loading " .. fullname .. ":\n" .. msg)
-		   end
-		end
+		local thing, msg = loader(fullname, name, env)
+		if thing then return thing; end
 		table.insert(attempts, msg)
 	     end
-	     return path, nil, table.concat(attempts, "\n")
+	     return nil, table.concat(attempts, "\n")
 	  end
 end
 
 load_b = make_path_searcher(function(fullname, name, env)
-			       return fullname, loadfile(fullname, "b", env)
+			       return loadfile(fullname, "b", env), fullname
 			    end,
 			    "b",
 			    ".luac")
 
 load_t = make_path_searcher(function(fullname, name, env)
-			       return fullname, loadfile(fullname, "t", env)
+			       local f = io.open(fullname, "r")
+			       if not f then return nil, fullname; end
+			       local source = f:read("a")
+			       f:close()
+			       local thunk, msg = load(source, "", "t", env)
+			       if not thunk then
+				  if msg:sub(1,12)=='[string ""]:' then msg=msg:sub(13); end
+				  io.stderr:write("Error loading lua source file\n", fullname, ":", msg, "\n")
+				  error("", 0)
+			       else
+				  return thunk, fullname
+			       end
 			    end,
 			    "t",
 			    ".lua")
 
 load_so = make_path_searcher(function(fullname, name, env)
-			       return fullname, loadlib(fullname, "luaopen_" .. name)
+			       return loadlib(fullname, "luaopen_" .. name), fullname
 			    end,
 			    "so",
 			    ".so")
@@ -75,14 +80,10 @@ load_so = make_path_searcher(function(fullname, name, env)
 -- To disable an entry, either remove it or set its path to nil
 local default_try_table = {
    {path=true, load=function(root, path, name, env)
-		       return "package.loaded",
-		       env.package.loaded[name],
-		       "not already loaded"
+		       return env.package.loaded[name], "package.loaded";
 		    end},
    {path=true, load=function(root, path, name, env, parent_env)
-		       return "parent->package.loaded",
-		       parent_env.package.loaded[name],
-		       "not already loaded in parent module"
+		       return parent_env.package.loaded[name], "parent->package.loaded";
 		    end},
    {path="luac_path", load=load_b},
    {path="lua_path", load=load_t},
@@ -103,16 +104,17 @@ function m.current_module()
 end
 
 local function search(name, in_module)
-   local thing, path_tried
+   local thing, attempts
    local paths_attempted = ""
    local env = in_module and in_module.env or _ENV
    local parent_env = in_module.parent_env
    for i, try in ipairs(in_module.try) do
+      -- print("search:", i, try.path, try.load)
       if try.path then
-	 path_tried, thing, msg = try.load(in_module.root, try.path, name, env, parent_env)
+	 thing, attempts = try.load(in_module.root, try.path, name, env, parent_env)
 	 if type(thing)=="table" then return true, thing;
 	 elseif type(thing)=="function" then return true, thing(); end
-      paths_attempted = paths_attempted .. "\n" .. path_tried
+      paths_attempted = paths_attempted .. "\n" .. attempts
       end
    end
    return nil, nil, paths_attempted
@@ -123,10 +125,7 @@ local function make_importer(default_module)
 	     in_module = in_module or default_module
 	     if not in_module then error("can only import into a module"); end
 	     local found, module, msg = search(name, in_module)
-	     if not found then
-		error("submodule: in " .. tostring(in_module) ..
-		   ", module '" .. name .. "' not found:" .. msg, 2)
-	     end
+	     if not found then error("module '" .. name .. "' not found in:" .. msg, 2); end
 	     in_module.env.package.loaded[name] = module
 	     return module
 	  end
@@ -146,14 +145,7 @@ local function make_require(in_module)
    return function(name)
 	     local loaded = in_module.env.package.loaded[name]
 	     if loaded then return loaded
-	     else
-		local ok, thing = pcall(require, name)
-		if not ok then
-		   error("submodule: in " .. tostring(in_module) .. ", module '" .. name ..
-		      "' is not already loaded, and the lua require function has failed:\n" ..
-		      thing, 2)
-		end
-		return thing
+	     else return require(name)
 	     end
 	  end
 end
