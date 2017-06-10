@@ -57,11 +57,9 @@ load_b = make_path_searcher(function(fullname, name, env)
 load_t = make_path_searcher(function(fullname, name, env)
 			       local f = io.open(fullname, "r")
 			       if not f then return nil, fullname; end
-			       local source = f:read("a")
 			       f:close()
-			       local thunk, msg = load(source, "", "t", env)
+			       local thunk, msg = loadfile(fullname, "t", env)
 			       if not thunk then
-				  if msg:sub(1,12)=='[string ""]:' then msg=msg:sub(13); end
 				  io.stderr:write("Error loading lua source file\n", fullname, ":", msg, "\n")
 				  error("", 0)
 			       else
