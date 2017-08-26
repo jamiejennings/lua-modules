@@ -26,6 +26,8 @@ function thread.pcall(f, ...)
    return co.resume(t, ...)
 end
 
+thread.resume = co.resume
+
 local function thread_error(msg, ...)
    error(table.concat({msg, "Values:", ...}, "\n"), 3)
 end
@@ -77,8 +79,8 @@ end
 -- collected, that thread's vars will be collected on the next gc.
 -- 
 -- Names are restricted to strings for now, to encourage usage such as:
---    thread.vars.count = 0
---    print(thread.vars.count)
+--    thread.env.count = 0
+--    print(thread.env.count)
 
 local function get(threadvars, name)
    local locals = rawget(threadvars, (thread.current()))
@@ -98,6 +100,6 @@ local function set(threadvars, name, value)
    locals[name] = value
 end
 
-thread.vars = setmetatable({}, {__mode="k", __index=get, __newindex=set})
+thread.env = setmetatable({}, {__mode="k", __index=get, __newindex=set})
 
 return thread

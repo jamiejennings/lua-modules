@@ -90,4 +90,49 @@ assert(val1=="value given")
 assert(val2==val)
 assert(val3==type(val))
 
+function returns_or_yields(val)
+   if val == nil then
+      return "value given", val, type(val)
+   else
+      thread.yield("value given", val, type(val))
+      error("SHOULD NEVER GET HERE")
+   end
+end
+
+ok, val1, val2, val3 = thread.pcall(returns_or_yields)
+assert(ok)					    -- no lua errors
+assert(not thread.exception.is(val1))
+assert(val1=="value given")
+assert(val2==nil)
+assert(val3=="nil")
+
+val = 996
+ok, val1, val2, val3 = thread.pcall(returns_or_yields, val)
+assert(ok)					    -- no lua errors
+assert(not thread.exception.is(val1))
+assert(val1=="value given")
+assert(val2==val)
+assert(val3==type(val))
+
+
+-- Thread-local storage
+
+assert(thread.env)
+thread.env.x = 1
+assert(thread.env.x==1)
+
+ok, val = thread.pcall(function() return thread.env.x end)
+assert(ok)
+assert(val==nil)
+assert(thread.env.x==1)
+
+ok, val = thread.pcall(function() thread.env.x = 12345; return "foo" end)
+assert(ok)
+assert(val=="foo")
+assert(thread.env.x==1)
+
+ok, val = thread.pcall(function() thread.env.x = 12345; return thread.env.x end)
+assert(ok)
+assert(val==12345)
+assert(thread.env.x==1)
 
