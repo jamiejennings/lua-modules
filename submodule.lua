@@ -37,6 +37,7 @@ local function make_path_searcher(loader, mtype, ext)
    return function(root, path, name, env)
 	     local attempts = {}
 	     local next_prefix = path:gmatch(prefix_pattern)
+	     name = name:sub(1, (name:find(".", 1, true) or 0) -1)
 	     for prefix in next_prefix do
 		local fullname = prefix .. "/" .. name .. ext
 		if fullname:sub(1,1)~="/" then fullname = root .. "/" .. fullname; end
@@ -70,10 +71,11 @@ load_t = make_path_searcher(function(fullname, name, env)
 			    ".lua")
 
 load_so = make_path_searcher(function(fullname, name, env)
-			       return loadlib(fullname, "luaopen_" .. name), fullname
-			    end,
-			    "so",
-			    ".so")
+				name = (name:gsub("[.]", "_"))
+				return loadlib(fullname, "luaopen_" .. name), fullname
+			     end,
+			     "so",
+			     ".so")
 
 -- To disable an entry, either remove it or set its path to nil
 local default_try_table = {
