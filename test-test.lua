@@ -20,7 +20,7 @@ First, some tests that we expect to pass ..
 Tests expected to fail [31mX[39m[31mX[39m
 
 ** TOTAL: 4 tests attempted.
-** 2 tests failed:
+** 2 tests failed
 [31mtest-test.lua:68 Tests expected to fail: : False means the test failed
 [39m[31mtest-test.lua:69 Tests expected to fail: : Module 'test' not a function (which is the right answer)
 [39m@test-test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
@@ -33,7 +33,7 @@ First, some tests that we expect to pass ..
 Tests expected to fail XX
 
 ** TOTAL: 4 tests attempted.
-** 2 tests failed:
+** 2 tests failed
 test-test.lua:68 Tests expected to fail: : False means the test failed
 test-test.lua:69 Tests expected to fail: : Module 'test' not a function (which is the right answer)
 @test-test.lua	4	2	2	2	table: 0x7fcfcc40b3e0	
@@ -104,6 +104,6 @@ else
    print("FAILED: Output of test did NOT match expectations")
    local i = mismatch(a, expected_output)
    print("Mismatch occurs at position " .. tostring(i))
-   print("  actual output at the mismatch: " .. a:sub(i, i+30))
-   print("  expected output at the mismatch: " .. expected_output:sub(i, i+30))
+   print("  actual output at the mismatch: " .. a:sub(i, i+40) .. "...")
+   print("  expected output at the mismatch: " .. expected_output:sub(i, i+40) .. "...")
 end
