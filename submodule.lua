@@ -49,30 +49,39 @@ local function make_path_searcher(loader, mtype, ext)
 	  end
 end
 
+local function attempt_msg(filename, msg, ...)
+   return filename .. ' (' .. msg .. ') ' .. (table.concat({...}, '\n') or '')
+end
+
 load_b = make_path_searcher(function(fullname, name, env)
-			       return loadfile(fullname, "b", env), fullname
+			       local thunk, msg = loadfile(fullname, "b", env)
+			       if not thunk then
+				  return nil, attempt_msg(fullname, msg)
+			       end
+			       return thunk, fullname
 			    end,
 			    "b",
 			    ".luac")
 
 load_t = make_path_searcher(function(fullname, name, env)
 			       local f = io.open(fullname, "r")
-			       if not f then return nil, fullname; end
+			       if not f then
+				  return nil, attempt_msg(fullname, "no such file")
+			       end
 			       f:close()
 			       local thunk, msg = loadfile(fullname, "t", env)
 			       if not thunk then
-				  io.stderr:write("Error loading lua source file\n", fullname, ":", msg, "\n")
-				  error("", 0)
-			       else
-				  return thunk, fullname
+				  return nil, attempt_msg(fullname, msg)
 			       end
+			       return thunk, fullname
 			    end,
 			    "t",
 			    ".lua")
 
 load_so = make_path_searcher(function(fullname, name, env)
 				name = (name:gsub("[.]", "_"))
-				return loadlib(fullname, "luaopen_" .. name), fullname
+				local libtable, msg, where = loadlib(fullname, "luaopen_" .. name)
+				return libtable, libtable and fullname or attempt_msg(fullname, msg, where)
 			     end,
 			     "so",
 			     ".so")
