@@ -324,15 +324,40 @@ assert(ts(primes)=="{2, 3, 5, 7}")
 assert(ts(cons(true, primes))=="{true, 2, 3, 5, 7}")
 assert(ts(new(print))=="{"..tostring(print).."}")
 
-ts = list.like
-assert(list.like{})
-assert(list.like{"a"})
-assert(list.like{"a", "b"})
-assert(list.like{"a", "b", false, 5, print, "e"})
-assert(not list.like{a=67})			    -- non-numeric index
-assert(not list.like{nil, "a"})			    -- non-consecutive indices
-assert(not list.like{[0]="a"})			    -- zero index
-assert(not list.like{[-1]="a"})			    -- negative index
-assert(not list.like{[-1]="a", "b"})		    -- negative index
+like = list.like
+assert(like{})
+assert(like{"a"})
+assert(like{"a", "b"})
+assert(like{"a", "b", false, 5, print, "e"})
+assert(not like{a=67})			    -- non-numeric index
+assert(not like{nil, "a"})			    -- non-consecutive indices
+assert(not like{[0]="a"})			    -- zero index
+assert(not like{[-1]="a"})			    -- negative index
+assert(not like{[-1]="a", "b"})		    -- negative index
+
+reverse = list.reverse
+assert(list.is(reverse(list.new())))
+r = reverse(list.from{4, 5, 6})
+assert(list.car(r) == 6)
+assert(list.last(r) == 4)
+--assert(list.nth(r, 2) == 5)
+assert(list.length(r) == 3)
+
+do_insert = list.do_insert
+do_insert(r, 100)
+assert(list.last(r) == 100)
+assert(list.length(r) == 4)
+do_insert(r, 99, 1)
+assert(list.car(r) == 99)
+assert(list.last(r) == 100)
+assert(list.length(r) == 5)
+do_insert(r, 77, 2)
+assert(list.car(r) == 99)
+assert(list.car(list.cdr(r)) == 77)
+assert(list.last(r) == 100)
+assert(list.length(r) == 6)
+
+
+
 
 print("Done")

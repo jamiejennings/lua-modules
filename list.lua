@@ -89,6 +89,14 @@ function list.append(l1, ...)
    return result
 end
 
+function list.do_insert(l, elt, pos)
+   if pos then
+      table.insert(l, pos, elt)
+   else
+      table.insert(l, elt)
+   end
+end
+
 function list.andf(a, b, ...)
    if next{...} then error("andf takes exactly 2 args"); end
    return (a and b)
